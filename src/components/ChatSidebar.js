@@ -19,6 +19,8 @@ export default function ChatSidebar({
   onClose,
   unreadCounts = {},
   currentUserId,
+  groups = [],
+  onOpenCreateGroup,
 }) {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("all"); // "all" | "archived"
@@ -221,7 +223,70 @@ export default function ChatSidebar({
             </div>
           )}
 
-          <div className="pt-2 pb-1 px-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+          {/* Guruhlar ro'yxati */}
+          {activeTab === "all" && groups.length > 0 && (
+            <div className="space-y-1 pt-2">
+              <div className="flex items-center justify-between px-2 pb-1 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                <span>Guruhlar ({groups.length})</span>
+                {onOpenCreateGroup && (
+                  <button
+                    onClick={onOpenCreateGroup}
+                    className="text-cyan-400 hover:text-cyan-300 font-bold lowercase text-[10px] cursor-pointer"
+                  >
+                    + yangi
+                  </button>
+                )}
+              </div>
+              {groups.map((group) => {
+                const isGroupActive =
+                  activeChat?.type === "group" &&
+                  (activeChat?.id === group.groupId || activeChat?.groupId === group.groupId);
+                return (
+                  <div
+                    key={group.groupId}
+                    className={`group flex items-center justify-between p-2 rounded-xl transition ${
+                      isGroupActive
+                        ? "bg-zinc-900 border border-cyan-500/40 text-white shadow-sm"
+                        : "hover:bg-zinc-900/60 text-zinc-300"
+                    }`}
+                  >
+                    <button
+                      onClick={() => {
+                        onSelectChat({
+                          type: "group",
+                          id: group.groupId,
+                          groupId: group.groupId,
+                          displayName: group.name,
+                          avatarBg: group.avatarBg,
+                          memberCount: group.memberIds?.length || 1,
+                        });
+                        onClose?.();
+                      }}
+                      className="flex-1 flex items-center gap-3 min-w-0 text-left cursor-pointer"
+                    >
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-white text-xs bg-gradient-to-tr ${
+                          group.avatarBg || "from-cyan-500 to-blue-600"
+                        } shadow-sm shrink-0`}
+                      >
+                        {group.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-semibold truncate text-zinc-100 block">
+                          {group.name}
+                        </span>
+                        <p className="text-[10px] text-zinc-400 truncate">
+                          {group.memberIds?.length || 1} a‘zo • Kod: {group.inviteCode}
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="pt-3 pb-1 px-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
             {activeTab === "archived" ? "Arxivlangan suhbatlar" : "Foydalanuvchilar"}
           </div>
 

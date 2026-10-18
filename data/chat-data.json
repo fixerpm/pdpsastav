@@ -34,7 +34,7 @@
       "avatarBg": "from-amber-500 to-orange-600",
       "avatarText": "M",
       "isOnline": true,
-      "lastSeen": "2026-10-17T16:40:03.484Z"
+      "lastSeen": "2026-10-18T04:13:28.090Z"
     },
     {
       "id": "user-6426014b",
@@ -43,7 +43,25 @@
       "avatarBg": "from-violet-500 to-purple-600",
       "avatarText": "U",
       "isOnline": true,
-      "lastSeen": "2026-10-17T16:39:35.392Z"
+      "lastSeen": "2026-10-18T08:15:16.683Z"
+    },
+    {
+      "id": "user-0ee6b33a",
+      "username": "foydalanuvchi_3943",
+      "displayName": "Foydalanuvchi_3943",
+      "avatarBg": "from-rose-500 to-pink-600",
+      "avatarText": "F",
+      "isOnline": true,
+      "lastSeen": "2026-10-18T04:23:20.524Z"
+    },
+    {
+      "id": "user-6d48a995",
+      "username": "fixerp",
+      "displayName": "fixerp",
+      "avatarBg": "from-cyan-500 to-blue-600",
+      "avatarText": "F",
+      "isOnline": true,
+      "lastSeen": "2026-10-18T08:12:31.822Z"
     }
   ],
   "messages": [
@@ -458,7 +476,11 @@
     "2f7ebafed66eea29179249aadb7999c3361f148e877cad44": "user-813207c0",
     "e6ae74003a2ac01e268663f46246a6f4a2699492454c3697": "user-89fa393f",
     "e859c5274d6c2856736dd550c6e204e790a7596bd56dcfa6": "user-6426014b",
-    "5c847ec85490f648b3471bd5021a7fb1a2b0d4fc6ad5ff5e": "user-6426014b"
+    "5c847ec85490f648b3471bd5021a7fb1a2b0d4fc6ad5ff5e": "user-6426014b",
+    "8416a1c2ff690f76967cba24b2605039a2994e1486407220": "user-0ee6b33a",
+    "01002df1490fd39af8f2c93ffd0d4303c5d843650380b78f": "user-0ee6b33a",
+    "ee37249895bf1497f51351a0da91f595acfe5824611714bf": "user-6d48a995",
+    "749e3269f97ee5c9eebbd92d9be3859be3ad1a561ef3175a": "user-6d48a995"
   },
   "nicknames": {
     "user-89491ced": {
@@ -473,6 +495,12 @@
       },
       "user-813207c0": {
         "clearedAt": 1792255048861,
+        "isHidden": true
+      }
+    },
+    "user-89fa393f": {
+      "user-6426014b": {
+        "clearedAt": 1792295978685,
         "isHidden": true
       }
     }

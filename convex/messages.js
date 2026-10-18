@@ -1,7 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-// Fayl (audio/video) yuklash uchun Convex storage upload URL yaratish
+// Fayl (audio/video/media) yuklash uchun Convex storage upload URL yaratish
 export const generateUploadUrl = mutation({
   args: {},
   handler: async (ctx) => {
@@ -12,16 +12,24 @@ export const generateUploadUrl = mutation({
   },
 });
 
-// Xabarlar ro'yxatini real-time olish
+// Xabarlar ro'yxatini real-time olish (1-on-1, Guruh yoki Public)
 export const list = query({
   args: {
     recipientId: v.optional(v.string()),
     viewerId: v.optional(v.string()),
+    groupId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let messagesQuery;
+    let messages = [];
 
-    if (args.recipientId && args.recipientId !== "public") {
+    if (args.groupId) {
+      // Guruh xabarlari
+      messages = await ctx.db
+        .query("messages")
+        .withIndex("by_group", (q) => q.eq("groupId", args.groupId))
+        .collect();
+      messages.sort((a, b) => a._creationTime - b._creationTime);
+    } else if (args.recipientId && args.recipientId !== "public") {
       // 1-on-1 xabarlar
       const list1 = await ctx.db
         .query("messages")
@@ -37,11 +45,11 @@ export const list = query({
 
       const combined = [...list1, ...list2].filter(
         (m) =>
-          (m.senderId === args.viewerId && m.recipientId === args.recipientId) ||
-          (m.senderId === args.recipientId && m.recipientId === args.viewerId)
+          !m.groupId &&
+          ((m.senderId === args.viewerId && m.recipientId === args.recipientId) ||
+            (m.senderId === args.recipientId && m.recipientId === args.viewerId))
       );
 
-      // Unique bo'yicha filter
       const seen = new Set();
       const unique = [];
       for (const m of combined) {
@@ -51,26 +59,26 @@ export const list = query({
         }
       }
       unique.sort((a, b) => a._creationTime - b._creationTime);
-      messagesQuery = unique;
+      messages = unique;
     } else {
-      // Umumiy guruh xabarlari
+      // Public umumiy xabarlar
       const all = await ctx.db
         .query("messages")
         .withIndex("by_recipient", (q) => q.eq("recipientId", "public"))
         .order("desc")
         .take(150);
-      messagesQuery = all.reverse();
+      messages = all.reverse().filter((m) => !m.groupId);
     }
 
     // viewerId uchun o'chirilgan xabarlarni filtrlash
-    const filtered = messagesQuery.filter((m) => {
+    const filtered = messages.filter((m) => {
       if (args.viewerId && Array.isArray(m.deletedFor) && m.deletedFor.includes(args.viewerId)) {
         return false;
       }
       return true;
     });
 
-    // Storage ID larga tegishli doimiy CDN URL manzillarni aniqlash
+    // Storage ID larga tegishli doimiy URL manzillarni hal qilish
     const resolved = await Promise.all(
       filtered.map(async (msg) => {
         let mediaUrl = msg.mediaUrl;
@@ -89,17 +97,30 @@ export const list = query({
   },
 });
 
-// Yangi xabar yuborish (text, sticker, voice, video)
+// Yangi xabar yuborish (text, sticker, voice, video, file, reply)
 export const send = mutation({
   args: {
     author: v.string(),
     senderId: v.optional(v.string()),
     recipientId: v.optional(v.string()),
+    groupId: v.optional(v.string()),
     body: v.string(),
     type: v.optional(v.string()),
     status: v.optional(v.string()),
     storageId: v.optional(v.string()),
     mediaUrl: v.optional(v.string()),
+    replyToId: v.optional(v.string()),
+    replyToSnapshot: v.optional(
+      v.object({
+        id: v.string(),
+        author: v.string(),
+        body: v.string(),
+        type: v.optional(v.string()),
+      })
+    ),
+    fileName: v.optional(v.string()),
+    fileSize: v.optional(v.number()),
+    duration: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const author = args.author.trim() || "Anonim";
@@ -113,7 +134,8 @@ export const send = mutation({
     const messageId = await ctx.db.insert("messages", {
       author,
       senderId: args.senderId,
-      recipientId: args.recipientId || "public",
+      recipientId: args.groupId ? undefined : args.recipientId || "public",
+      groupId: args.groupId,
       body,
       type,
       status: args.status || "delivered",
@@ -122,9 +144,139 @@ export const send = mutation({
       deletedFor: [],
       storageId: args.storageId,
       mediaUrl: args.mediaUrl,
+      replyToId: args.replyToId,
+      replyToSnapshot: args.replyToSnapshot,
+      reactions: [],
+      isPinned: false,
+      fileName: args.fileName,
+      fileSize: args.fileSize,
+      duration: args.duration,
     });
 
+    // Agar 1-on-1 xabar bo'lsa va qabul qiluvchi bor bo'lsa, bildirishnoma yaratish
+    if (!args.groupId && args.recipientId && args.recipientId !== "public" && args.senderId) {
+      await ctx.db.insert("notifications", {
+        userId: args.recipientId,
+        type: "message",
+        title: `Yangi xabar: ${author}`,
+        body: type === "text" ? body : `[${type} xabari]`,
+        data: JSON.stringify({ senderId: args.senderId }),
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
     return messageId;
+  },
+});
+
+// Emojili reaksiya bildirish (toggle emoji reaction)
+export const react = mutation({
+  args: {
+    messageId: v.id("messages"),
+    userId: v.string(),
+    author: v.string(),
+    emoji: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const msg = await ctx.db.get(args.messageId);
+    if (!msg) throw new Error("Xabar topilmadi");
+
+    const currentReactions = Array.isArray(msg.reactions) ? [...msg.reactions] : [];
+    const existingIndex = currentReactions.findIndex((r) => r.userId === args.userId);
+
+    if (existingIndex >= 0) {
+      if (currentReactions[existingIndex].emoji === args.emoji) {
+        // Bir xil emojini qayta bosganda olib tashlash
+        currentReactions.splice(existingIndex, 1);
+      } else {
+        // Boshqa emojiga almashtirish
+        currentReactions[existingIndex] = {
+          emoji: args.emoji,
+          userId: args.userId,
+          author: args.author,
+        };
+      }
+    } else {
+      currentReactions.push({
+        emoji: args.emoji,
+        userId: args.userId,
+        author: args.author,
+      });
+    }
+
+    await ctx.db.patch(args.messageId, {
+      reactions: currentReactions,
+    });
+
+    return { success: true, reactions: currentReactions };
+  },
+});
+
+// Xabarni mahkamlash (pin / unpin)
+export const togglePin = mutation({
+  args: {
+    messageId: v.id("messages"),
+    userId: v.string(),
+    shouldPin: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const msg = await ctx.db.get(args.messageId);
+    if (!msg) throw new Error("Xabar topilmadi");
+
+    await ctx.db.patch(args.messageId, {
+      isPinned: args.shouldPin,
+      pinnedAt: args.shouldPin ? new Date().toISOString() : undefined,
+      pinnedBy: args.shouldPin ? args.userId : undefined,
+    });
+
+    return { success: true, isPinned: args.shouldPin };
+  },
+});
+
+// Xabarlarni qidirish
+export const searchMessages = query({
+  args: {
+    query: v.string(),
+    viewerId: v.string(),
+    recipientId: v.optional(v.string()),
+    groupId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const q = args.query.trim().toLowerCase();
+    if (!q) return [];
+
+    let messages = [];
+    if (args.groupId) {
+      messages = await ctx.db
+        .query("messages")
+        .withIndex("by_group", (ind) => ind.eq("groupId", args.groupId))
+        .collect();
+    } else if (args.recipientId) {
+      const list1 = await ctx.db
+        .query("messages")
+        .withIndex("by_recipient", (ind) => ind.eq("recipientId", args.recipientId))
+        .collect();
+      const list2 = await ctx.db
+        .query("messages")
+        .withIndex("by_recipient", (ind) => ind.eq("recipientId", args.viewerId))
+        .collect();
+      messages = [...list1, ...list2].filter(
+        (m) =>
+          (m.senderId === args.viewerId && m.recipientId === args.recipientId) ||
+          (m.senderId === args.recipientId && m.recipientId === args.viewerId)
+      );
+    } else {
+      messages = await ctx.db.query("messages").order("desc").take(300);
+    }
+
+    return messages
+      .filter((m) => {
+        if (m.type === "deleted" || m.isDeletedForEveryone) return false;
+        if (Array.isArray(m.deletedFor) && m.deletedFor.includes(args.viewerId)) return false;
+        return m.body && m.body.toLowerCase().includes(q);
+      })
+      .slice(0, 30);
   },
 });
 

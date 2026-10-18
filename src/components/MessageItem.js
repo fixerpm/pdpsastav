@@ -2,17 +2,24 @@
 
 import { useState } from "react";
 
+const QUICK_REACTIONS = ["❤️", "👍", "😂", "🔥", "🎉", "👏"];
+
 export default function MessageItem({
   msg,
   isMe,
   getAvatarColor,
   formatTime,
+  currentUserId,
   onEditMessage,
   onDeleteMessage,
+  onReplyMessage,
+  onReactMessage,
+  onTogglePin,
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(msg.body || "");
   const [showMenu, setShowMenu] = useState(false);
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const isSticker = msg.type === "sticker";
@@ -77,9 +84,25 @@ export default function MessageItem({
     return null;
   };
 
+  // Emojilarni guruhlash
+  const reactionsMap = new Map();
+  if (Array.isArray(msg.reactions)) {
+    for (const r of msg.reactions) {
+      if (!reactionsMap.has(r.emoji)) {
+        reactionsMap.set(r.emoji, { count: 0, hasMe: false, users: [] });
+      }
+      const entry = reactionsMap.get(r.emoji);
+      entry.count += 1;
+      entry.users.push(r.author);
+      if (r.userId === currentUserId) {
+        entry.hasMe = true;
+      }
+    }
+  }
+
   return (
     <div
-      className={`group relative flex items-end gap-2.5 ${
+      className={`group relative flex items-end gap-2.5 my-1.5 ${
         isMe ? "justify-end" : "justify-start"
       }`}
     >
@@ -94,19 +117,66 @@ export default function MessageItem({
         </div>
       )}
 
-      {/* Xabar amallari menyusi tugmasi */}
+      {/* Hover amallar paneli (Reply, Reaction, Menu) */}
       {!isDeleted && (
         <div
           className={`opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 self-center ${
             isMe ? "order-first" : "order-last"
           }`}
         >
+          {/* Reaction picker trigger */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowReactionPicker((p) => !p)}
+              className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition cursor-pointer"
+              title="Reaksiya bildirish"
+            >
+              😊
+            </button>
+
+            {/* Reactions popup */}
+            {showReactionPicker && (
+              <>
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setShowReactionPicker(false)}
+                />
+                <div className="absolute bottom-full mb-1.5 z-40 bg-zinc-900 border border-zinc-800 rounded-full px-2 py-1 shadow-2xl flex items-center gap-1.5 animate-scale-in">
+                  {QUICK_REACTIONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => {
+                        onReactMessage?.(msg._id || msg.id, emoji);
+                        setShowReactionPicker(false);
+                      }}
+                      className="text-base hover:scale-125 transition transform p-1 cursor-pointer"
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Reply button */}
+          <button
+            type="button"
+            onClick={() => onReplyMessage?.(msg)}
+            className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition cursor-pointer"
+            title="Javob berish (Reply)"
+          >
+            ↩️
+          </button>
+
+          {/* More options menu */}
           <div className="relative">
             <button
               type="button"
               onClick={() => setShowMenu((prev) => !prev)}
               className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition cursor-pointer"
-              title="Amallar"
+              title="Boshqa amallar"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
@@ -115,12 +185,9 @@ export default function MessageItem({
 
             {showMenu && (
               <>
+                <div className="fixed inset-0 z-30" onClick={() => setShowMenu(false)} />
                 <div
-                  className="fixed inset-0 z-30"
-                  onClick={() => setShowMenu(false)}
-                />
-                <div
-                  className={`absolute bottom-full mb-1 z-40 w-36 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl py-1 text-xs text-zinc-300 ${
+                  className={`absolute bottom-full mb-1 z-40 w-40 rounded-xl bg-zinc-900 border border-zinc-800 shadow-2xl py-1 text-xs text-zinc-300 ${
                     isMe ? "right-0" : "left-0"
                   }`}
                 >
@@ -130,6 +197,17 @@ export default function MessageItem({
                     className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 hover:text-cyan-400 flex items-center gap-2 cursor-pointer"
                   >
                     <span>📋</span> {copied ? "Nusxalandi!" : "Nusxalash"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowMenu(false);
+                      onTogglePin?.(msg._id || msg.id, !msg.isPinned);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 hover:text-cyan-400 flex items-center gap-2 cursor-pointer"
+                  >
+                    <span>📌</span> {msg.isPinned ? "Mahkamlashdan olish" : "Mahkamlash"}
                   </button>
 
                   {/* Faqat o'z matnli xabarini tahrirlash mumkin */}
@@ -166,143 +244,187 @@ export default function MessageItem({
       )}
 
       {/* Asosiy Xabar Pufakchasi (Message Bubble) */}
-      <div
-        className={`max-w-[85%] sm:max-w-md rounded-2xl p-3 shadow-sm space-y-1.5 transition-all ${
-          isSticker
-            ? "bg-transparent shadow-none"
-            : isDeleted
-            ? "bg-zinc-900/60 border border-zinc-800/60 text-zinc-500 italic rounded-xl"
-            : isMe
-            ? "bg-gradient-to-br from-cyan-600 via-cyan-600 to-teal-600 text-white font-medium rounded-br-none shadow-md shadow-cyan-950/40 border border-cyan-400/30"
-            : "bg-zinc-900/90 border border-zinc-800 text-zinc-100 rounded-bl-none shadow-sm"
-        }`}
-      >
-        {!isMe && !isSticker && !isDeleted && (
-          <div className="text-[11px] font-bold text-cyan-400">
-            {msg.author}
-          </div>
-        )}
+      <div className="flex flex-col">
+        <div
+          className={`max-w-[85%] sm:max-w-md rounded-2xl p-3 shadow-sm space-y-1.5 transition-all ${
+            isSticker
+              ? "bg-transparent shadow-none"
+              : isDeleted
+              ? "bg-zinc-900/60 border border-zinc-800/60 text-zinc-500 italic rounded-xl"
+              : isMe
+              ? "bg-gradient-to-br from-cyan-600 via-cyan-600 to-teal-600 text-white font-medium rounded-br-none shadow-md shadow-cyan-950/40 border border-cyan-400/30"
+              : "bg-zinc-900/90 border border-zinc-800 text-zinc-100 rounded-bl-none shadow-sm"
+          }`}
+        >
+          {/* Muallif nomi (Guruhda yoki shaxsiy suhbatdosh) */}
+          {!isMe && !isSticker && !isDeleted && (
+            <div className="text-[11px] font-bold text-cyan-400">{msg.author}</div>
+          )}
 
-        {/* O'chirilgan xabar holati */}
-        {isDeleted ? (
-          <div className="flex items-center gap-2 text-xs py-1">
-            <span>🚫</span>
-            <span>Ushbu xabar o‘chirildi</span>
-          </div>
-        ) : isEditing ? (
-          // Tahrirlash rejimi
-          <form onSubmit={handleSaveEdit} className="space-y-2">
-            <textarea
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              autoFocus
-              rows={2}
-              className="w-full bg-zinc-950 text-zinc-100 border border-cyan-400/80 focus:ring-1 focus:ring-cyan-500 rounded-xl p-2 text-xs sm:text-sm focus:outline-none resize-none"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSaveEdit(e);
-                } else if (e.key === "Escape") {
-                  handleCancelEdit();
-                }
-              }}
-            />
-            <div className="flex items-center justify-end gap-1.5">
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-medium transition cursor-pointer"
-              >
-                Bekor qilish
-              </button>
-              <button
-                type="submit"
-                className="px-3 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold text-[11px] transition cursor-pointer shadow-sm"
-              >
-                Saqlash
-              </button>
+          {/* Javob berilgan xabar (Reply Quote Preview) */}
+          {msg.replyToSnapshot && !isDeleted && (
+            <div className="p-2 rounded-lg bg-black/25 border-l-2 border-cyan-300 text-[11px] mb-1 leading-snug">
+              <span className="font-bold text-cyan-200 block truncate">
+                {msg.replyToSnapshot.author}
+              </span>
+              <span className="text-zinc-300 line-clamp-1">
+                {msg.replyToSnapshot.body || `[${msg.replyToSnapshot.type}]`}
+              </span>
             </div>
-          </form>
-        ) : (
-          <>
-            {/* Stiker */}
-            {isSticker && (
-              <div className="text-6xl sm:text-7xl py-1 select-none animate-bounce">
-                {msg.body}
-              </div>
-            )}
+          )}
 
-            {/* Ovozli xabar */}
-            {isVoice && (
-              <div className="space-y-1 py-1">
-                <div className="flex items-center gap-2 text-xs font-semibold mb-1">
-                  <span>🎙️ Ovozli xabar</span>
+          {/* O'chirilgan xabar holati */}
+          {isDeleted ? (
+            <div className="flex items-center gap-2 text-xs py-1">
+              <span>🚫</span>
+              <span>Ushbu xabar o‘chirildi</span>
+            </div>
+          ) : isEditing ? (
+            <form onSubmit={handleSaveEdit} className="space-y-2">
+              <textarea
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                autoFocus
+                rows={2}
+                className="w-full bg-zinc-950 text-zinc-100 border border-cyan-400/80 focus:ring-1 focus:ring-cyan-500 rounded-xl p-2 text-xs sm:text-sm focus:outline-none resize-none"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSaveEdit(e);
+                  } else if (e.key === "Escape") {
+                    handleCancelEdit();
+                  }
+                }}
+              />
+              <div className="flex items-center justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-medium transition cursor-pointer"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="submit"
+                  className="px-3 py-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-zinc-950 font-bold text-[11px] transition cursor-pointer shadow-sm"
+                >
+                  Saqlash
+                </button>
+              </div>
+            </form>
+          ) : (
+            <>
+              {/* Stiker */}
+              {isSticker && (
+                <div className="text-6xl sm:text-7xl py-1 select-none animate-bounce">
+                  {msg.body}
                 </div>
-                {msg.mediaUrl ? (
-                  <audio
-                    src={msg.mediaUrl}
-                    controls
-                    preload="metadata"
-                    className="w-56 sm:w-64 h-9 accent-cyan-400 rounded-lg outline-none"
-                  />
-                ) : (
-                  <div className="text-xs italic opacity-75">
-                    Audio saqlangan (ID: {msg.storageId?.slice(0, 10)})
+              )}
+
+              {/* Ovozli xabar */}
+              {isVoice && (
+                <div className="space-y-1 py-1">
+                  <div className="flex items-center gap-2 text-xs font-semibold mb-1">
+                    <span>🎙️ Ovozli xabar</span>
                   </div>
-                )}
-              </div>
-            )}
-
-            {/* Dumaloq Video xabar (Telegram video note) */}
-            {isVideo && (
-              <div className="space-y-1.5 py-1">
-                <div className="flex items-center gap-1.5 text-xs font-semibold mb-1">
-                  <span>📹 Videoxabar</span>
-                </div>
-                {msg.mediaUrl ? (
-                  <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-full overflow-hidden border-2 border-cyan-400/80 shadow-xl shadow-cyan-950/50 bg-black mx-auto">
-                    <video
+                  {msg.mediaUrl ? (
+                    <audio
                       src={msg.mediaUrl}
                       controls
-                      playsInline
                       preload="metadata"
-                      className="w-full h-full object-cover"
+                      className="w-56 sm:w-64 h-9 accent-cyan-400 rounded-lg outline-none"
                     />
-                  </div>
-                ) : (
-                  <div className="text-xs italic opacity-75">
-                    Videoxabar saqlangan (ID: {msg.storageId?.slice(0, 10)})
-                  </div>
-                )}
-              </div>
-            )}
+                  ) : (
+                    <div className="text-xs italic opacity-75">
+                      Audio saqlangan (ID: {msg.storageId?.slice(0, 10)})
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {/* Oddiy matn */}
-            {!isSticker && !isVoice && !isVideo && (
-              <p className="text-xs sm:text-sm whitespace-pre-wrap break-words leading-relaxed select-text">
-                {msg.body}
-              </p>
-            )}
-          </>
-        )}
+              {/* Dumaloq Video xabar */}
+              {isVideo && (
+                <div className="space-y-1.5 py-1">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold mb-1">
+                    <span>📹 Videoxabar</span>
+                  </div>
+                  {msg.mediaUrl ? (
+                    <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-full overflow-hidden border-2 border-cyan-400/80 shadow-xl shadow-cyan-950/50 bg-black mx-auto">
+                      <video
+                        src={msg.mediaUrl}
+                        controls
+                        playsInline
+                        preload="metadata"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-xs italic opacity-75">
+                      Videoxabar saqlangan (ID: {msg.storageId?.slice(0, 10)})
+                    </div>
+                  )}
+                </div>
+              )}
 
-        {/* Vaqt, Holat va Tahrirlanganlik belgisi */}
-        {!isSticker && !isDeleted && (
+              {/* Oddiy matn */}
+              {!isSticker && !isVoice && !isVideo && (
+                <p className="text-xs sm:text-sm whitespace-pre-wrap break-words leading-relaxed select-text">
+                  {msg.body}
+                </p>
+              )}
+            </>
+          )}
+
+          {/* Vaqt, Pinned belgisi, Holat */}
+          {!isSticker && !isDeleted && (
+            <div
+              className={`text-[10px] flex items-center justify-end gap-1.5 ${
+                isMe ? "text-cyan-100/90" : "text-zinc-400"
+              }`}
+            >
+              {msg.isPinned && (
+                <span title="Mahkamlangan xabar" className="text-cyan-400">
+                  📌
+                </span>
+              )}
+              {msg.isEdited && (
+                <span
+                  className="italic opacity-80"
+                  title={
+                    msg.editedAt
+                      ? `Tahrirlangan: ${new Date(msg.editedAt).toLocaleTimeString()}`
+                      : "Tahrirlangan"
+                  }
+                >
+                  (tahrirlangan)
+                </span>
+              )}
+              <span>{formatTime(msg._creationTime || msg.createdAt)}</span>
+              {renderStatus()}
+            </div>
+          )}
+        </div>
+
+        {/* Emojili Reaksiyalar Ro'yxati (Reaction Badges) */}
+        {reactionsMap.size > 0 && !isDeleted && (
           <div
-            className={`text-[10px] flex items-center justify-end gap-1.5 ${
-              isMe ? "text-cyan-100/90" : "text-zinc-400"
-            }`}
+            className={`flex flex-wrap gap-1 mt-1 ${isMe ? "justify-end" : "justify-start"}`}
           >
-            {msg.isEdited && (
-              <span
-                className="italic opacity-80"
-                title={msg.editedAt ? `Tahrirlangan: ${new Date(msg.editedAt).toLocaleTimeString()}` : "Tahrirlangan"}
+            {Array.from(reactionsMap.entries()).map(([emoji, data]) => (
+              <button
+                key={emoji}
+                onClick={() => onReactMessage?.(msg._id || msg.id, emoji)}
+                className={`px-2 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 border transition cursor-pointer ${
+                  data.hasMe
+                    ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300"
+                    : "bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                }`}
+                title={data.users.join(", ")}
               >
-                (tahrirlangan)
-              </span>
-            )}
-            <span>{formatTime(msg._creationTime || msg.createdAt)}</span>
-            {renderStatus()}
+                <span>{emoji}</span>
+                <span>{data.count}</span>
+              </button>
+            ))}
           </div>
         )}
       </div>

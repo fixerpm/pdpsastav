@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useConvex } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import ChatSidebar from "@/components/ChatSidebar";
 import MessageItem from "@/components/MessageItem";
@@ -9,7 +9,15 @@ import CallModal from "@/components/CallModal";
 import Image from "next/image";
 import ConfirmModal from "@/components/ConfirmModal";
 import EditNicknameModal from "@/components/EditNicknameModal";
+import NavigationRail from "@/components/NavigationRail";
+import AuthModal from "@/components/AuthModal";
+import ContactsModal from "@/components/ContactsModal";
+import GroupsModal from "@/components/GroupsModal";
+import MeetingsModal from "@/components/MeetingsModal";
+import SettingsModal from "@/components/SettingsModal";
+import NotificationDropdown from "@/components/NotificationDropdown";
 import { BRAND_CONFIG } from "@/config/branding";
+import { parseErrorMessage } from "@/lib/error-parser";
 
 const STICKERS = ["🔥", "❤️", "👍", "😂", "🎉", "🚀", "😎", "👏", "💯", "🥳", "💡", "✨", "🤩", "🤖", "⚡", "🙌"];
 
@@ -57,6 +65,21 @@ function createTempMessage({ author, senderId, recipientId, textBody, type, stor
 }
 
 export default function ChatPage() {
+  // Global Toast Notifications State
+  const [toasts, setToasts] = useState([]);
+  const showToast = useCallback((msg, type = "info") => {
+    const cleanMsg = parseErrorMessage(msg);
+    const id = Date.now() + Math.random().toString(36).slice(2, 6);
+    setToasts((prev) => {
+      if (prev.some((t) => t.message === cleanMsg)) return prev;
+      return [...prev, { id, message: cleanMsg, type }];
+    });
+    const timeout = type === "error" || type === "warning" ? 6000 : 4000;
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, timeout);
+  }, []);
+
   // Foydalanuvchi va sessiya
   const [currentUser, setCurrentUser] = useState(null);
   const [sessionToken, setSessionToken] = useState("");
@@ -143,20 +166,42 @@ export default function ChatPage() {
   const peerConnectionRef = useRef(null);
   const callTimerRef = useRef(null);
 
+  // Modallar va Navigatsiya
+  const [activeView, setActiveView] = useState("chats"); // "chats" | "contacts" | "groups" | "meetings" | "settings"
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isContactsModalOpen, setIsContactsModalOpen] = useState(false);
+  const [isGroupsModalOpen, setIsGroupsModalOpen] = useState(false);
+  const [isMeetingsModalOpen, setIsMeetingsModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [isChatSearchOpen, setIsChatSearchOpen] = useState(false);
+  const [chatSearchText, setChatSearchText] = useState("");
+  const [activeMeetingRoomId, setActiveMeetingRoomId] = useState(null);
+
   // Convex integratsiyasi (Real-time Cloud Database)
   const isConvexConfigured =
     typeof window !== "undefined"
       ? Boolean(process.env.NEXT_PUBLIC_CONVEX_URL || localStorage.getItem("CONVEX_URL_DEV"))
       : Boolean(process.env.NEXT_PUBLIC_CONVEX_URL);
 
-  const activeRecipientId = activeChat === "public" ? "public" : (activeChat?.id || "public");
+  const convex = useConvex();
+
+  const isGroupChat = activeChat?.type === "group" || Boolean(activeChat?.groupId);
+  const activeGroupId = isGroupChat ? (activeChat.groupId || activeChat.id) : undefined;
+  const activeRecipientId = isGroupChat ? undefined : (activeChat === "public" ? "public" : (activeChat?.id || "public"));
 
   const convexMessages = useQuery(
     api.messages.list,
     isConvexConfigured
-      ? { recipientId: activeRecipientId, viewerId: currentUser?.id || undefined }
+      ? {
+          groupId: activeGroupId,
+          recipientId: activeRecipientId,
+          viewerId: currentUser?.id || undefined,
+        }
       : "skip"
   );
+
   const convexSend = useMutation(api.messages.send);
   const convexEdit = useMutation(api.messages.edit);
   const convexDelete = useMutation(api.messages.deleteMessage);
@@ -166,9 +211,76 @@ export default function ChatPage() {
   const convexArchive = useMutation(api.conversations.archive);
   const convexClearHistory = useMutation(api.conversations.clearHistory);
 
+  // Messages: Reactions & Pin
+  const convexReact = useMutation(api.messages.react);
+  const convexTogglePin = useMutation(api.messages.togglePin);
+
+  // Auth & Profile
+  const convexRegister = useMutation(api.users.register);
+  const convexLogin = useMutation(api.users.login);
+  const convexUpdateProfile = useMutation(api.users.updateProfile);
+  const convexChangePassword = useMutation(api.users.changePassword);
+  const convexDeleteAccount = useMutation(api.users.deleteAccount);
+
+  // Contacts
+  const convexContacts = useQuery(
+    api.contacts.listContacts,
+    currentUser?.id ? { userId: currentUser.id } : "skip"
+  );
+  const convexContactRequests = useQuery(
+    api.contacts.listRequests,
+    currentUser?.id ? { userId: currentUser.id } : "skip"
+  );
+  const convexSendContactRequest = useMutation(api.contacts.sendRequest);
+  const convexRespondContactRequest = useMutation(api.contacts.respondRequest);
+  const convexSetContactNickname = useMutation(api.contacts.setNickname);
+  const convexToggleBlock = useMutation(api.contacts.toggleBlock);
+  const convexRemoveContact = useMutation(api.contacts.removeContact);
+
+  // Groups
+  const convexGroups = useQuery(
+    api.groups.listGroups,
+    currentUser?.id ? { userId: currentUser.id } : "skip"
+  );
+  const convexCreateGroup = useMutation(api.groups.createGroup);
+  const convexJoinGroupByCode = useMutation(api.groups.joinByInviteCode);
+  const convexRemoveGroupMember = useMutation(api.groups.removeMember);
+  const convexSetGroupAdminRole = useMutation(api.groups.setAdminRole);
+  const convexUpdateGroup = useMutation(api.groups.updateGroup);
+
+  // Meetings
+  const convexCurrentMeeting = useQuery(
+    api.meetings.getMeeting,
+    activeMeetingRoomId ? { meetingId: activeMeetingRoomId } : "skip"
+  );
+  const convexCreateMeeting = useMutation(api.meetings.createMeeting);
+  const convexJoinMeeting = useMutation(api.meetings.joinMeeting);
+  const convexLeaveMeeting = useMutation(api.meetings.leaveMeeting);
+  const convexEndMeeting = useMutation(api.meetings.endMeeting);
+  const convexUpdateMeetingMediaState = useMutation(api.meetings.updateMediaState);
+
+  // Notifications
+  const convexNotifications = useQuery(
+    api.notifications.list,
+    currentUser?.id ? { userId: currentUser.id } : "skip"
+  );
+  const convexUnreadNotificationsCount = useQuery(
+    api.notifications.unreadCount,
+    currentUser?.id ? { userId: currentUser.id } : "skip"
+  );
+  const convexMarkNotificationAsRead = useMutation(api.notifications.markAsRead);
+  const convexMarkAllNotificationsAsRead = useMutation(api.notifications.markAllAsRead);
+
   const isConvexReady = isConvexConfigured && convexMessages !== undefined;
-  const displayMessages = isConvexReady && Array.isArray(convexMessages) ? convexMessages : messages;
+  const rawDisplayMessages = isConvexReady && Array.isArray(convexMessages) ? convexMessages : messages;
   const isLoaded = initialLoaded || isConvexReady;
+
+  const displayMessages = rawDisplayMessages.filter((m) => {
+    if (!chatSearchText.trim()) return true;
+    return m.body?.toLowerCase().includes(chatSearchText.toLowerCase());
+  });
+
+  const pinnedMessage = rawDisplayMessages.find((m) => m.isPinned);
 
   // 1. Dastlabki autentifikatsiya
   useEffect(() => {
@@ -218,13 +330,33 @@ export default function ChatPage() {
             localStorage.setItem("chat_user", JSON.stringify(authData.user));
           }
         }
+
+        // Convex users jadvali bilan sinxronizatsiya (Owner va kontaktlar to'g'ri ishlashi uchun)
+        if (isConvexConfigured && savedName) {
+          try {
+            const convexUserRes = await convex.mutation(api.users.authenticate, {
+              username: savedName,
+              displayName: savedName,
+            });
+            if (convexUserRes?.user) {
+              setCurrentUser((prev) => ({
+                ...(prev || {}),
+                ...convexUserRes.user,
+                id: convexUserRes.user.id,
+                userId: convexUserRes.user.id,
+              }));
+            }
+          } catch (convexSyncErr) {
+            console.debug("Convex user sync:", convexSyncErr);
+          }
+        }
       } catch (err) {
         console.error("Auth init error:", err);
       }
     }
 
     initAuth();
-  }, []);
+  }, [convex, isConvexConfigured]);
 
   // 2. Foydalanuvchilar va guruh sozlamalarini yuklash
   useEffect(() => {
@@ -734,6 +866,37 @@ export default function ChatPage() {
     });
   };
 
+  // Reaksiya bildirish (Toggle Reaction)
+  const handleReactMessage = async (messageId, emoji) => {
+    if (isConvexReady && convexReact && messageId && !String(messageId).startsWith("temp-") && !String(messageId).startsWith("msg-")) {
+      try {
+        await convexReact({
+          messageId,
+          userId: currentUser?.id || "anon",
+          author: currentUser?.displayName || author,
+          emoji,
+        });
+      } catch (err) {
+        console.warn("Convex react error:", err);
+      }
+    }
+  };
+
+  // Xabarni mahkamlash (Toggle Pin)
+  const handleTogglePin = async (messageId, shouldPin) => {
+    if (isConvexReady && convexTogglePin && messageId && !String(messageId).startsWith("temp-") && !String(messageId).startsWith("msg-")) {
+      try {
+        await convexTogglePin({
+          messageId,
+          userId: currentUser?.id || "anon",
+          shouldPin,
+        });
+      } catch (err) {
+        console.warn("Convex togglePin error:", err);
+      }
+    }
+  };
+
   // 8. Kontakt nomini tahrirlash (Nickname)
   const handleOpenEditNickname = (contactUser) => {
     setNicknameModal({
@@ -1221,14 +1384,14 @@ export default function ChatPage() {
 
   // 17. Umumiy xabar jo'natish
   const dispatchMessage = async ({ textBody, type = "text", storageId = null, mediaUrl = null }) => {
-    const isPublic = activeChat === "public";
-    const recipientId = isPublic ? "public" : activeChat.id;
+    const isPublic = !isGroupChat && activeChat === "public";
+    const recipientId = isGroupChat ? undefined : (isPublic ? "public" : activeChat.id);
     const authorName = currentUser?.displayName || author.trim() || "Anonim";
 
     const { clientTempId, optimisticMsg } = createTempMessage({
       author: authorName,
       senderId: currentUser?.id || null,
-      recipientId,
+      recipientId: recipientId || "public",
       textBody,
       type,
       storageId,
@@ -1243,7 +1406,8 @@ export default function ChatPage() {
       type,
       storageId: storageId || undefined,
       mediaUrl: mediaUrl || undefined,
-      recipientId: isPublic ? undefined : activeChat.id,
+      recipientId: isPublic ? undefined : activeChat?.id,
+      groupId: activeGroupId,
       clientTempId,
     };
 
@@ -1257,10 +1421,21 @@ export default function ChatPage() {
           storageId: msgData.storageId,
           mediaUrl: msgData.mediaUrl,
           senderId: currentUser?.id,
-          recipientId: isPublic ? "public" : activeChat.id,
+          recipientId: isGroupChat ? undefined : (isPublic ? "public" : activeChat?.id),
+          groupId: activeGroupId,
+          replyToId: replyingTo?._id,
+          replyToSnapshot: replyingTo
+            ? {
+                id: replyingTo._id || replyingTo.id,
+                author: replyingTo.author,
+                body: replyingTo.body || `[${replyingTo.type}]`,
+                type: replyingTo.type,
+              }
+            : undefined,
           status: "delivered",
         });
         sentViaConvex = true;
+        setReplyingTo(null);
       } catch (err) {
         console.warn("Convex send failed, falling back to local API:", err);
       }
@@ -1591,7 +1766,24 @@ export default function ChatPage() {
   const currentTypingUser = typingUsers[currentChatKey];
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-amber-500/30 overflow-hidden">
+    <div className="flex h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-cyan-500/30 overflow-hidden relative">
+      {/* Chap Navigatsiya Ustuni (Navigation Rail) */}
+      <NavigationRail
+        activeView={activeView}
+        onSelectView={(view) => {
+          setActiveView(view);
+          if (view === "contacts") setIsContactsModalOpen(true);
+          if (view === "groups") setIsGroupsModalOpen(true);
+          if (view === "meetings") setIsMeetingsModalOpen(true);
+          if (view === "settings") setIsSettingsModalOpen(true);
+        }}
+        unreadCount={convexUnreadNotificationsCount || 0}
+        incomingRequestsCount={convexContactRequests?.incoming?.length || 0}
+        currentUser={currentUser}
+        onOpenNotifications={() => setIsNotificationOpen((prev) => !prev)}
+        isNotificationOpen={isNotificationOpen}
+      />
+
       {/* Chap Sidebar (Suhbatlar va Foydalanuvchilar) */}
       <ChatSidebar
         users={users}
@@ -1608,6 +1800,8 @@ export default function ChatPage() {
         onClose={() => setIsSidebarOpen(false)}
         unreadCounts={unreadCounts}
         currentUserId={currentUser?.id}
+        groups={convexGroups || []}
+        onOpenCreateGroup={() => setIsGroupsModalOpen(true)}
       />
 
       {/* Asosiy Chat Oynasi */}
@@ -1655,6 +1849,24 @@ export default function ChatPage() {
                   </p>
                 </div>
               </div>
+            ) : activeChat?.type === "group" ? (
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                <div
+                  className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr ${
+                    activeChat.avatarBg || "from-cyan-500 to-blue-600"
+                  } flex items-center justify-center text-xs sm:text-sm font-bold text-white shadow-md shrink-0`}
+                >
+                  {activeChat.displayName?.slice(0, 2).toUpperCase() || "GP"}
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-sm sm:text-base font-bold text-white tracking-tight truncate">
+                    {activeChat.displayName}
+                  </h2>
+                  <p className="text-[11px] text-zinc-400">
+                    {activeChat.memberCount || 1} a‘zo • Guruh chati
+                  </p>
+                </div>
+              </div>
             ) : (
               <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                 <div className="relative shrink-0">
@@ -1695,9 +1907,33 @@ export default function ChatPage() {
             )}
           </div>
 
-          {/* O'ng tomon: Qo'ng'iroq va Profil */}
+          {/* O'ng tomon: Qidiruv, Qo'ng'iroq, Uchrashuv va Profil */}
           <div className="flex items-center gap-2 shrink-0">
-            {activeChat !== "public" && (
+            {/* Qidiruv tugmasi */}
+            <button
+              onClick={() => setIsChatSearchOpen((prev) => !prev)}
+              className={`p-2 rounded-xl transition cursor-pointer text-xs font-medium border ${
+                isChatSearchOpen
+                  ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
+                  : "bg-zinc-800/80 hover:bg-zinc-800 border-zinc-700/60 text-zinc-300"
+              }`}
+              title="Chat ichidan qidirish"
+            >
+              🔍
+            </button>
+
+            {/* Video Uchrashuv tugmasi (Google Meet style) */}
+            <button
+              onClick={() => setIsMeetingsModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-sm"
+              title="Google Meet uslubida uchrashuv ochish"
+            >
+              <span>📹</span>
+              <span className="hidden sm:inline">Uchrashuv</span>
+            </button>
+
+            {/* Shaxsiy chatda audio/video qo'ng'iroq */}
+            {activeChat !== "public" && activeChat?.type !== "group" && (
               <div className="flex items-center gap-1.5 mr-1 sm:mr-2">
                 <button
                   type="button"
@@ -1735,57 +1971,78 @@ export default function ChatPage() {
               </div>
             )}
 
-            {/* Ismni tahrirlash */}
-            {isEditingName ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const val = e.currentTarget.elements.namedItem("name").value;
-                  handleSaveName(val);
-                }}
-                className="flex items-center gap-1.5"
-              >
-                <input
-                  name="name"
-                  defaultValue={author}
-                  autoFocus
-                  className="bg-zinc-800 border border-zinc-700 text-xs text-white rounded-lg px-2.5 py-1.5 w-28 sm:w-36 focus:outline-none focus:border-cyan-400"
-                />
-                <button
-                  type="submit"
-                  className="bg-cyan-500 hover:bg-cyan-400 text-zinc-950 text-xs font-bold px-2 py-1.5 rounded-lg transition cursor-pointer"
-                >
-                  Ok
-                </button>
-              </form>
-            ) : (
+            {/* Akkauntga kirish yoki Profil */}
+            {currentUser?.passwordHash ? (
               <button
-                onClick={() => setIsEditingName(true)}
-                className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/60 transition text-xs text-zinc-300 hover:text-white cursor-pointer"
-                title="Ismni o'zgartirish"
+                onClick={() => setIsSettingsModalOpen(true)}
+                className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-cyan-500/30 transition text-xs text-white cursor-pointer"
+                title="Profil sozlamalari"
               >
-                <span
-                  className={`w-5 h-5 rounded-full bg-gradient-to-tr ${getAvatarColor(
-                    author
+                <div
+                  className={`w-6 h-6 rounded-full bg-gradient-to-tr ${getAvatarColor(
+                    currentUser.displayName
                   )} flex items-center justify-center text-[10px] font-bold text-white shadow-sm`}
                 >
-                  {author[0]?.toUpperCase() || "U"}
+                  {currentUser.displayName?.[0]?.toUpperCase() || "U"}
+                </div>
+                <span className="max-w-[70px] sm:max-w-[100px] truncate font-bold hidden sm:inline">
+                  {currentUser.displayName}
                 </span>
-                <span className="max-w-[70px] sm:max-w-[110px] truncate font-medium hidden sm:inline">
-                  {author}
-                </span>
-                <svg className="w-3.5 h-3.5 text-zinc-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-                  />
-                </svg>
+              </button>
+            ) : (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs transition shadow-md shadow-cyan-500/20 cursor-pointer"
+              >
+                Kirish
               </button>
             )}
           </div>
         </header>
+
+        {/* Pinned Message Banner */}
+        {pinnedMessage && (
+          <div className="shrink-0 bg-zinc-900/90 border-b border-zinc-800/80 px-4 py-2 flex items-center justify-between gap-3 text-xs backdrop-blur-md">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-cyan-400 text-sm">📌</span>
+              <span className="text-zinc-400 text-[11px] font-semibold shrink-0">Mahkamlangan:</span>
+              <span className="text-zinc-200 truncate">{pinnedMessage.body}</span>
+            </div>
+            <button
+              onClick={() => handleTogglePin(pinnedMessage._id || pinnedMessage.id, false)}
+              className="text-zinc-500 hover:text-rose-400 text-[10px] shrink-0 font-medium cursor-pointer"
+              title="Mahkamlashdan olish"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* In-chat search bar */}
+        {isChatSearchOpen && (
+          <div className="shrink-0 bg-zinc-900/95 border-b border-zinc-800 px-4 py-2 flex items-center gap-2">
+            <input
+              type="text"
+              value={chatSearchText}
+              onChange={(e) => setChatSearchText(e.target.value)}
+              placeholder="Ushbu suhbat ichidan qidirish..."
+              className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400"
+              autoFocus
+            />
+            <span className="text-[11px] text-zinc-400">
+              {displayMessages.length} ta xabar
+            </span>
+            <button
+              onClick={() => {
+                setIsChatSearchOpen(false);
+                setChatSearchText("");
+              }}
+              className="p-1 text-zinc-400 hover:text-white rounded-lg cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Tarmoq uzilishi ogohlantirishi */}
         {!isConnected && (
@@ -1842,8 +2099,12 @@ export default function ChatPage() {
                     isMe={isMe}
                     getAvatarColor={getAvatarColor}
                     formatTime={formatTime}
+                    currentUserId={currentUser?.id}
                     onEditMessage={handleEditMessage}
                     onDeleteMessage={handleDeleteMessagePrompt}
+                    onReplyMessage={(m) => setReplyingTo(m)}
+                    onReactMessage={handleReactMessage}
+                    onTogglePin={handleTogglePin}
                   />
                 );
               })}
@@ -1936,6 +2197,31 @@ export default function ChatPage() {
                 <button
                   onClick={() => setErrorMsg("")}
                   className="text-rose-400 hover:text-rose-300 font-bold ml-2 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Javob berilayotgan xabar banneri (Reply banner) */}
+            {replyingTo && (
+              <div className="mb-2.5 p-2.5 rounded-xl bg-zinc-950/95 border border-cyan-500/40 flex items-center justify-between text-xs backdrop-blur-md shadow-md animate-fade-in">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="text-cyan-400 text-base">↩️</span>
+                  <div className="min-w-0">
+                    <span className="text-cyan-300 font-bold block truncate">
+                      {replyingTo.author}ga javob:
+                    </span>
+                    <span className="text-zinc-400 text-[11px] block truncate">
+                      {replyingTo.body || `[${replyingTo.type}]`}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplyingTo(null)}
+                  className="p-1 text-zinc-400 hover:text-white rounded-lg cursor-pointer"
+                  title="Javobni bekor qilish"
                 >
                   ✕
                 </button>
@@ -2077,6 +2363,321 @@ export default function ChatPage() {
         onSave={handleSaveNickname}
         onClose={() => setNicknameModal((prev) => ({ ...prev, isOpen: false }))}
       />
+
+      {/* Auth Modali (Ro'yxatdan o'tish va Kirish) */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        convexRegister={convexRegister}
+        convexLogin={convexLogin}
+        onAuthSuccess={(user, token) => {
+          setCurrentUser(user);
+          setSessionToken(token);
+          setAuthor(user.displayName);
+        }}
+      />
+
+      {/* Kontaktlar Modali */}
+      <ContactsModal
+        isOpen={isContactsModalOpen}
+        onClose={() => setIsContactsModalOpen(false)}
+        currentUser={currentUser}
+        contacts={convexContacts || []}
+        contactRequests={convexContactRequests || { incoming: [], outgoing: [] }}
+        onSendRequest={async (targetUsername, targetUserId) => {
+          if (!currentUser?.id) {
+            setIsAuthModalOpen(true);
+            throw new Error("Iltimos, avval akkauntingizga kiring");
+          }
+          return await convexSendContactRequest({
+            fromUserId: currentUser.id,
+            targetUsername,
+            targetUserId: targetUserId || undefined,
+          });
+        }}
+        onRespondRequest={async (requestId, action) => {
+          if (currentUser?.id) {
+            await convexRespondContactRequest({
+              requestId,
+              action,
+              userId: currentUser.id,
+            });
+          }
+        }}
+        onSetNickname={async (contactUserId, nickname) => {
+          if (currentUser?.id) {
+            await convexSetContactNickname({
+              userId: currentUser.id,
+              contactUserId,
+              nickname,
+            });
+          }
+        }}
+        onToggleBlock={async (targetUserId, shouldBlock) => {
+          if (currentUser?.id) {
+            await convexToggleBlock({
+              userId: currentUser.id,
+              targetUserId,
+              shouldBlock,
+            });
+          }
+        }}
+        onRemoveContact={async (contactUserId) => {
+          if (currentUser?.id) {
+            await convexRemoveContact({
+              userId: currentUser.id,
+              contactUserId,
+            });
+          }
+        }}
+        onSelectChatWithUser={(user) => {
+          handleSelectChat(user);
+        }}
+        convexSearchUsers={async ({ searchQuery, viewerId }) => {
+          return await convex.query(api.users.search, { searchQuery, viewerId });
+        }}
+      />
+
+      {/* Guruhlar Modali */}
+      <GroupsModal
+        isOpen={isGroupsModalOpen}
+        onClose={() => setIsGroupsModalOpen(false)}
+        currentUser={currentUser}
+        groups={convexGroups || []}
+        contacts={convexContacts || []}
+        onCreateGroup={async ({ name, description, memberUserIds }) => {
+          if (!currentUser?.id) {
+            setIsAuthModalOpen(true);
+            throw new Error("Iltimos, avval akkauntingizga kiring");
+          }
+          const res = await convexCreateGroup({
+            name,
+            description,
+            ownerId: currentUser.id,
+            memberUserIds,
+          });
+          return res;
+        }}
+        onJoinByCode={async (inviteCode) => {
+          if (!currentUser?.id) {
+            setIsAuthModalOpen(true);
+            throw new Error("Iltimos, avval akkauntingizga kiring");
+          }
+          const res = await convexJoinGroupByCode({
+            inviteCode,
+            userId: currentUser.id,
+          });
+          return res;
+        }}
+        onSelectGroupChat={(group) => {
+          handleSelectChat({
+            type: "group",
+            id: group.groupId,
+            groupId: group.groupId,
+            displayName: group.name,
+            avatarBg: group.avatarBg,
+            memberCount: group.memberIds?.length || 1,
+          });
+        }}
+        onLeaveGroup={async (groupId) => {
+          if (currentUser?.id) {
+            await convexRemoveGroupMember({
+              groupId,
+              requesterId: currentUser.id,
+              targetUserId: currentUser.id,
+            });
+            if (activeChat?.groupId === groupId) {
+              setActiveChat("public");
+            }
+          }
+        }}
+        onRemoveMember={async (groupId, targetUserId) => {
+          if (currentUser?.id) {
+            await convexRemoveGroupMember({
+              groupId,
+              requesterId: currentUser.id,
+              targetUserId,
+            });
+          }
+        }}
+        onSetAdminRole={async (groupId, targetUserId, shouldBeAdmin) => {
+          if (currentUser?.id) {
+            await convexSetGroupAdminRole({
+              groupId,
+              ownerId: currentUser.id,
+              targetUserId,
+              shouldBeAdmin,
+            });
+          }
+        }}
+        convexGetGroupDetails={async ({ groupId, userId }) => {
+          return await convex.query(api.groups.getGroup, { groupId, userId });
+        }}
+      />
+
+      {/* Uchrashuvlar Modali (Google Meet uslubida) */}
+      <MeetingsModal
+        isOpen={isMeetingsModalOpen}
+        onClose={() => setIsMeetingsModalOpen(false)}
+        currentUser={currentUser}
+        meeting={convexCurrentMeeting}
+        currentGroupId={activeGroupId}
+        onCreateMeeting={async ({ title, isAudioOnly, groupId }) => {
+          const res = await convexCreateMeeting({
+            title,
+            hostUserId: currentUser?.id || "anon",
+            hostName: currentUser?.displayName || author,
+            groupId: groupId || activeGroupId || undefined,
+            isAudioOnly,
+          });
+          setActiveMeetingRoomId(res.meetingId);
+          return res;
+        }}
+        onJoinMeeting={async (meetingId, isAudioOnly) => {
+          await convexJoinMeeting({
+            meetingId,
+            userId: currentUser?.id || "anon",
+            displayName: currentUser?.displayName || author,
+            isAudioOnly,
+          });
+          setActiveMeetingRoomId(meetingId);
+        }}
+        onLeaveMeeting={async (meetingId) => {
+          if (currentUser?.id) {
+            await convexLeaveMeeting({ meetingId, userId: currentUser.id });
+          }
+          setActiveMeetingRoomId(null);
+        }}
+        onEndMeeting={async (meetingId) => {
+          if (currentUser?.id) {
+            await convexEndMeeting({ meetingId, hostUserId: currentUser.id });
+          }
+          setActiveMeetingRoomId(null);
+        }}
+        onUpdateMediaState={async (meetingId, states) => {
+          if (currentUser?.id) {
+            await convexUpdateMeetingMediaState({
+              meetingId,
+              userId: currentUser.id,
+              ...states,
+            });
+          }
+        }}
+      />
+
+      {/* Sozlamalar Modali */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        currentUser={currentUser}
+        onUpdateProfile={async ({ displayName: newName, bio, privacySettings }) => {
+          if (currentUser?.id && convexUpdateProfile) {
+            await convexUpdateProfile({
+              userId: currentUser.id,
+              displayName: newName,
+              bio,
+              privacySettings,
+            });
+            setCurrentUser((prev) => ({
+              ...prev,
+              displayName: newName || prev.displayName,
+              bio: bio !== undefined ? bio : prev.bio,
+              privacySettings: privacySettings || prev.privacySettings,
+            }));
+            if (newName) setAuthor(newName);
+          }
+        }}
+        onChangePassword={async (oldPassword, newPassword) => {
+          if (currentUser?.id && convexChangePassword) {
+            await convexChangePassword({
+              userId: currentUser.id,
+              oldPassword,
+              newPassword,
+            });
+          }
+        }}
+        onLogout={() => {
+          localStorage.removeItem("chat_token");
+          localStorage.removeItem("chat_user");
+          window.location.reload();
+        }}
+        onDeleteAccount={async (password) => {
+          if (currentUser?.id && convexDeleteAccount) {
+            await convexDeleteAccount({
+              userId: currentUser.id,
+              password,
+            });
+            localStorage.clear();
+            window.location.reload();
+          }
+        }}
+      />
+
+      {/* Bildirishnomalar Dropdown */}
+      <NotificationDropdown
+        isOpen={isNotificationOpen}
+        onClose={() => setIsNotificationOpen(false)}
+        notifications={convexNotifications || []}
+        unreadCount={convexUnreadNotificationsCount || 0}
+        onMarkAsRead={async (id) => {
+          if (currentUser?.id) {
+            await convexMarkNotificationAsRead({ notificationId: id, userId: currentUser.id });
+          }
+        }}
+        onMarkAllAsRead={async () => {
+          if (currentUser?.id) {
+            await convexMarkAllNotificationsAsRead({ userId: currentUser.id });
+          }
+        }}
+        onOpenItem={(notif) => {
+          setIsNotificationOpen(false);
+          if (notif.type === "contact_request" || notif.type === "contact_accepted") {
+            setIsContactsModalOpen(true);
+          } else if (notif.type === "group_invite") {
+            setIsGroupsModalOpen(true);
+          } else if (notif.type === "meeting") {
+            setIsMeetingsModalOpen(true);
+          }
+        }}
+      />
+
+      {/* Global Toast Bildirishnomalar Tizimi */}
+      <div className="fixed bottom-5 right-5 z-[100] flex flex-col gap-2.5 max-w-sm pointer-events-none">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto p-3.5 rounded-2xl shadow-2xl backdrop-blur-xl border flex items-center justify-between gap-3 text-xs font-semibold animate-fade-in ${
+              toast.type === "error"
+                ? "bg-rose-950/95 border-rose-500/40 text-rose-200 shadow-rose-950/50"
+                : toast.type === "success"
+                ? "bg-emerald-950/95 border-emerald-500/40 text-emerald-200 shadow-emerald-950/50"
+                : toast.type === "warning"
+                ? "bg-amber-950/95 border-amber-500/40 text-amber-200 shadow-amber-950/50"
+                : "bg-zinc-900/95 border-zinc-700/60 text-zinc-200 shadow-black/50"
+            }`}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span className="text-base shrink-0">
+                {toast.type === "error"
+                  ? "⚠️"
+                  : toast.type === "success"
+                  ? "✓"
+                  : toast.type === "warning"
+                  ? "🔔"
+                  : "ℹ️"}
+              </span>
+              <span className="leading-snug break-words">{toast.message}</span>
+            </div>
+            <button
+              onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+              className="text-zinc-400 hover:text-white cursor-pointer ml-2 p-1 shrink-0"
+              title="Yopish"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

@@ -8,9 +8,14 @@
  * @module
  */
 
+import type * as contacts from "../contacts.js";
 import type * as conversations from "../conversations.js";
+import type * as groups from "../groups.js";
+import type * as lib_crypto from "../lib/crypto.js";
+import type * as meetings from "../meetings.js";
 import type * as messages from "../messages.js";
 import type * as migrate from "../migrate.js";
+import type * as notifications from "../notifications.js";
 import type * as users from "../users.js";
 
 import type {
@@ -20,9 +25,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  contacts: typeof contacts;
   conversations: typeof conversations;
+  groups: typeof groups;
+  "lib/crypto": typeof lib_crypto;
+  meetings: typeof meetings;
   messages: typeof messages;
   migrate: typeof migrate;
+  notifications: typeof notifications;
   users: typeof users;
 }>;
 
