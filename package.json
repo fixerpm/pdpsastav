@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node scripts/test-all-modules.js",
+    "test:failure": "node scripts/test-failure-injections.js",
     "convex:dev": "convex dev"
   },
   "dependencies": {
