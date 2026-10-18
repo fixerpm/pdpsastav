@@ -80,10 +80,45 @@ export default function ChatPage() {
     }, timeout);
   }, []);
 
-  // Foydalanuvchi va sessiya
-  const [currentUser, setCurrentUser] = useState(null);
-  const [sessionToken, setSessionToken] = useState("");
-  const [author, setAuthor] = useState("Foydalanuvchi");
+  // Foydalanuvchi va sessiya (sahifa yangilanganda darhol xotiradan yuklanadi)
+  const [currentUser, setCurrentUser] = useState(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem("chat_user");
+      if (raw) {
+        const u = JSON.parse(raw);
+        if (u && (u.id || u.userId || u.username) && !u.isAnonymous) {
+          return {
+            ...u,
+            id: u.userId || u.id,
+            userId: u.userId || u.id,
+          };
+        }
+      }
+    } catch (e) {}
+    return null;
+  });
+  const [sessionToken, setSessionToken] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return localStorage.getItem("chat_token") || "";
+    } catch (e) {
+      return "";
+    }
+  });
+  const [author, setAuthor] = useState(() => {
+    if (typeof window === "undefined") return "Foydalanuvchi";
+    try {
+      const raw = localStorage.getItem("chat_user");
+      if (raw) {
+        const u = JSON.parse(raw);
+        if (u) return u.displayName || u.username || "Foydalanuvchi";
+      }
+      return localStorage.getItem("chat_display_name") || localStorage.getItem("chat_username") || "Foydalanuvchi";
+    } catch (e) {
+      return "Foydalanuvchi";
+    }
+  });
   const [isEditingName, setIsEditingName] = useState(false);
 
   // Tanlangan chat va guruh sozlamalari
@@ -354,16 +389,28 @@ export default function ChatPage() {
       const savedToken = localStorage.getItem("chat_token") || "";
 
       // 1. Agar oldin ro'yxatdan o'tgan yoki kirgan haqiqiy foydalanuvchi bo'lsa
-      if (savedUser && (savedUser.id || savedUser.userId) && !savedUser.isAnonymous) {
-        const userId = savedUser.id || savedUser.userId;
+      if (savedUser && (savedUser.id || savedUser.userId || savedUser.username) && !savedUser.isAnonymous) {
+        const normalizedUser = {
+          ...savedUser,
+          id: savedUser.userId || savedUser.id,
+          userId: savedUser.userId || savedUser.id,
+        };
+        // DARHOL state'ga o'rnatamiz va modalni yopamiz (flicker va qayta login chiqmasligi uchun)
+        setCurrentUser(normalizedUser);
+        setSessionToken(savedToken || `tok-${normalizedUser.id}`);
+        setAuthor(normalizedUser.displayName || normalizedUser.username || "Foydalanuvchi");
+        setIsAuthModalOpen(false);
 
-        // Convex users jadvali orqali sessiyani tasdiqlash
+        // Orqa fonda Convex orqali profil yangilanishini tekshirish
         if (isConvexConfigured) {
           try {
-            const validUser = await convex.query(api.users.validateSession, { userId });
+            const validUser = await convex.query(api.users.validateSession, {
+              userId: normalizedUser.id,
+              username: normalizedUser.username,
+            });
             if (validUser) {
               const fullUser = {
-                ...savedUser,
+                ...normalizedUser,
                 ...validUser,
                 id: validUser.userId,
                 userId: validUser.userId,
@@ -372,38 +419,18 @@ export default function ChatPage() {
               setSessionToken(savedToken || `tok-${validUser.userId}`);
               setAuthor(validUser.displayName || validUser.username);
               localStorage.setItem("chat_user", JSON.stringify(fullUser));
-              return;
+              localStorage.setItem("chat_username", fullUser.username);
+              localStorage.setItem("chat_display_name", fullUser.displayName);
             }
           } catch (convexSyncErr) {
-            console.debug("Convex session validate error:", convexSyncErr);
+            console.debug("Convex session validate error (persisted session kept):", convexSyncErr);
           }
         }
-
-        // Local REST auth tekshiruvi (fallback)
-        try {
-          const authRes = await fetch("/api/chat/auth", {
-            headers: { Authorization: `Bearer ${savedToken}` },
-          });
-          if (authRes.ok) {
-            const authData = await authRes.json();
-            if (authData.authenticated && authData.user) {
-              setCurrentUser(authData.user);
-              setSessionToken(savedToken);
-              setAuthor(authData.user.displayName || authData.user.username);
-              return;
-            }
-          }
-        } catch (restErr) {
-          console.debug("REST session check error:", restErr);
-        }
+        return;
       }
 
-      // 2. Agar haqiqiy sessiya mavjud bo'lmasa:
-      // HECH QACHON avtomatik demo/mehmon akkaunt ochilmaydi!
-      localStorage.removeItem("chat_user");
-      localStorage.removeItem("chat_token");
-      localStorage.removeItem("chat_username");
-      localStorage.removeItem("chat_display_name");
+      // 2. Agar xotirada umuman foydalanuvchi mavjud bo'lmasa:
+      // Faqat shu holatdagina login modali ko'rsatiladi
       setCurrentUser(null);
       setSessionToken(null);
       setAuthor("Foydalanuvchi");
@@ -2758,9 +2785,21 @@ export default function ChatPage() {
         convexRegister={convexRegister}
         convexLogin={convexLogin}
         onAuthSuccess={(user, token) => {
-          setCurrentUser(user);
+          const normalized = {
+            ...user,
+            id: user.userId || user.id,
+            userId: user.userId || user.id,
+          };
+          setCurrentUser(normalized);
           setSessionToken(token);
-          setAuthor(user.displayName);
+          setAuthor(normalized.displayName || normalized.username || "Foydalanuvchi");
+          setIsAuthModalOpen(false);
+          try {
+            localStorage.setItem("chat_token", token);
+            localStorage.setItem("chat_username", normalized.username);
+            localStorage.setItem("chat_display_name", normalized.displayName);
+            localStorage.setItem("chat_user", JSON.stringify(normalized));
+          } catch (e) {}
         }}
       />
 

@@ -213,6 +213,7 @@ export const register = mutation({
       success: true,
       user: {
         id: userId,
+        userId: userId,
         username: cleanUsername,
         displayName: name,
         avatarBg: newUser.avatarBg,
@@ -259,6 +260,7 @@ export const login = mutation({
       success: true,
       user: {
         id: user.userId,
+        userId: user.userId,
         username: user.username,
         displayName: user.displayName,
         avatarBg: user.avatarBg,
@@ -275,14 +277,24 @@ export const login = mutation({
 // Haqiqiy sessiyani tasdiqlash va foydalanuvchi ma'lumotlarini olish
 export const validateSession = query({
   args: {
-    userId: v.string(),
+    userId: v.optional(v.string()),
+    username: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    if (!args.userId) return null;
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .first();
+    let user = null;
+    if (args.userId) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+        .first();
+    }
+    if (!user && args.username) {
+      const cleanUsername = args.username.trim().toLowerCase().replace(/^@/, "");
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_username", (q) => q.eq("username", cleanUsername))
+        .first();
+    }
 
     if (!user) return null;
 

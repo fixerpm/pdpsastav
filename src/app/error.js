@@ -47,8 +47,6 @@ export default function ErrorBoundary({ error, reset }) {
           <button
             onClick={() => {
               if (typeof window !== "undefined") {
-                localStorage.removeItem("chat_token");
-                localStorage.removeItem("chat_user");
                 window.location.href = "/";
               }
             }}

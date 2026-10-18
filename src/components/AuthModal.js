@@ -87,12 +87,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, convexRegist
 
         // Save session
         const token = "tok-" + Math.random().toString(36).slice(2, 12);
+        const finalUser = {
+          ...userResult,
+          id: userResult.userId || userResult.id,
+          userId: userResult.userId || userResult.id,
+        };
         localStorage.setItem("chat_token", token);
-        localStorage.setItem("chat_username", userResult.username);
-        localStorage.setItem("chat_display_name", userResult.displayName);
-        localStorage.setItem("chat_user", JSON.stringify(userResult));
+        localStorage.setItem("chat_username", finalUser.username);
+        localStorage.setItem("chat_display_name", finalUser.displayName);
+        localStorage.setItem("chat_user", JSON.stringify(finalUser));
 
-        if (onAuthSuccess) onAuthSuccess(userResult, token);
+        if (onAuthSuccess) onAuthSuccess(finalUser, token);
         onClose();
       } catch (err) {
         setError(parseErrorMessage(err, "Ro‘yxatdan o‘tishda xatolik yuz berdi"));
@@ -131,12 +136,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, convexRegist
         }
 
         const token = "tok-" + Math.random().toString(36).slice(2, 12);
+        const finalUser = {
+          ...userResult,
+          id: userResult.userId || userResult.id,
+          userId: userResult.userId || userResult.id,
+        };
         localStorage.setItem("chat_token", token);
-        localStorage.setItem("chat_username", userResult.username);
-        localStorage.setItem("chat_display_name", userResult.displayName);
-        localStorage.setItem("chat_user", JSON.stringify(userResult));
+        localStorage.setItem("chat_username", finalUser.username);
+        localStorage.setItem("chat_display_name", finalUser.displayName);
+        localStorage.setItem("chat_user", JSON.stringify(finalUser));
 
-        if (onAuthSuccess) onAuthSuccess(userResult, token);
+        if (onAuthSuccess) onAuthSuccess(finalUser, token);
         onClose();
       } catch (err) {
         setError(parseErrorMessage(err, "Login yoki parol noto‘g‘ri"));
