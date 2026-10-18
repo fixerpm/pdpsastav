@@ -353,51 +353,53 @@ export default function MeetingsModal({
   const isHost = meeting?.hostUserId === currentUser?.id;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-xl animate-fade-in">
-      <div className="relative w-full max-w-5xl h-[92vh] bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/95 sm:bg-black/90 backdrop-blur-xl animate-fade-in">
+      <div className="relative w-full max-w-5xl h-[100dvh] sm:h-[92dvh] bg-zinc-950 border-0 sm:border sm:border-zinc-800 rounded-none sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden">
         {/* Glow Effects */}
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Top Navbar */}
-        <div className="relative z-10 px-5 py-3.5 border-b border-zinc-800/80 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="relative z-10 px-4 sm:px-5 py-3 sm:py-3.5 pt-[max(0.75rem,env(safe-area-inset-top))] border-b border-zinc-800/80 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <Image
               src={BRAND_CONFIG.avatarUrl}
               alt={BRAND_CONFIG.name}
               width={34}
               height={34}
-              className="w-8 h-8 rounded-full object-cover ring-2 ring-cyan-500/50 shadow"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full object-cover ring-2 ring-cyan-500/50 shadow shrink-0"
             />
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-extrabold text-white tracking-wide">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 truncate">
+                <h3 className="text-xs sm:text-sm font-extrabold text-white tracking-wide truncate">
                   {meetingMode === "in-meeting"
                     ? meeting?.title || "PDP Uchrashuv"
                     : "PDP Video Uchrashuvlar"}
                 </h3>
                 {meetingMode === "in-meeting" && (
-                  <span className="flex items-center gap-1 px-2 py-0.5 bg-rose-500/15 border border-rose-500/30 text-rose-400 rounded-full text-[10px] font-bold">
+                  <span className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 bg-rose-500/15 border border-rose-500/30 text-rose-400 rounded-full text-[9px] sm:text-[10px] font-bold shrink-0">
                     <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
-                    Jonli efir
+                    Jonli
                   </span>
                 )}
               </div>
               {meetingMode === "in-meeting" && (
-                <p className="text-[11px] font-mono text-cyan-400">
-                  ID: {activeMeetingId} • Davomiyligi: {formatDuration(callDuration)}
+                <p className="text-[10px] sm:text-[11px] font-mono text-cyan-400 truncate">
+                  ID: {activeMeetingId} • {formatDuration(callDuration)}
                 </p>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {meetingMode === "in-meeting" && (
               <button
                 onClick={copyMeetingLink}
-                className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                className="px-2.5 sm:px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                title="Havolani nusxalash"
               >
-                <span>{copiedLink ? "✓ Nusxalandi!" : "📋 Havolani nusxalash"}</span>
+                <span>{copiedLink ? "✓" : "📋"}</span>
+                <span className="hidden sm:inline">{copiedLink ? "Nusxalandi!" : "Havolani nusxalash"}</span>
               </button>
             )}
 
@@ -567,12 +569,14 @@ export default function MeetingsModal({
               ) : (
                 /* Participants Grid */
                 <div
-                  className={`w-full h-full grid gap-3 ${
+                  className={`w-full h-full grid gap-2.5 sm:gap-3 ${
                     participants.length <= 1
                       ? "grid-cols-1"
                       : participants.length === 2
                       ? "grid-cols-1 md:grid-cols-2"
-                      : "grid-cols-2 md:grid-cols-3"
+                      : participants.length <= 4
+                      ? "grid-cols-1 sm:grid-cols-2"
+                      : "grid-cols-2 sm:grid-cols-2 md:grid-cols-3"
                   }`}
                 >
                   {participants.map((p) => {
@@ -591,19 +595,19 @@ export default function MeetingsModal({
                             className="w-full h-full object-cover -scale-x-100"
                           />
                         ) : (
-                          <div className="flex flex-col items-center justify-center">
-                            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-2xl font-extrabold text-white shadow-xl ring-4 ring-cyan-500/20">
+                          <div className="flex flex-col items-center justify-center p-3">
+                            <div className="w-16 h-16 sm:w-24 sm:h-24 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-xl sm:text-2xl font-extrabold text-white shadow-xl ring-4 ring-cyan-500/20">
                               {p.displayName?.slice(0, 2).toUpperCase() || "PDP"}
                             </div>
-                            <span className="mt-3 text-xs font-bold text-zinc-300">
+                            <span className="mt-2.5 sm:mt-3 text-xs font-bold text-zinc-300 truncate max-w-[140px] sm:max-w-none text-center">
                               {p.displayName} {isSelf && "(Siz)"}
                             </span>
                           </div>
                         )}
 
                         {/* Name and mic badge */}
-                        <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between px-2.5 py-1.5 bg-black/60 backdrop-blur-md rounded-xl text-[11px] text-white">
-                          <span className="font-semibold truncate">
+                        <div className="absolute bottom-2 sm:bottom-2.5 left-2 sm:left-2.5 right-2 sm:right-2.5 flex items-center justify-between px-2 sm:px-2.5 py-1 sm:py-1.5 bg-black/60 backdrop-blur-md rounded-xl text-[10px] sm:text-[11px] text-white">
+                          <span className="font-semibold truncate max-w-[70%]">
                             {p.displayName} {isSelf && "(Siz)"}
                           </span>
                           <span className="shrink-0">
@@ -626,11 +630,11 @@ export default function MeetingsModal({
             </div>
 
             {/* Meeting Control Bar (Google Meet style) */}
-            <div className="mt-4 py-2 flex items-center justify-center gap-3 sm:gap-4 shrink-0">
+            <div className="py-2.5 sm:py-3 px-2 flex items-center justify-center gap-2 sm:gap-4 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-zinc-950/80 backdrop-blur-md border-t border-zinc-850">
               {/* Mic Toggle */}
               <button
                 onClick={toggleMute}
-                className={`p-3.5 sm:px-5 sm:py-3 rounded-2xl font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg ${
+                className={`p-3 sm:px-5 sm:py-3 rounded-2xl font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg ${
                   isMuted
                     ? "bg-rose-500/20 border border-rose-500/40 text-rose-400 hover:bg-rose-500/30"
                     : "bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700"
@@ -644,7 +648,7 @@ export default function MeetingsModal({
               {/* Camera Toggle */}
               <button
                 onClick={toggleVideo}
-                className={`p-3.5 sm:px-5 sm:py-3 rounded-2xl font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg ${
+                className={`p-3 sm:px-5 sm:py-3 rounded-2xl font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg ${
                   isVideoOff
                     ? "bg-rose-500/20 border border-rose-500/40 text-rose-400 hover:bg-rose-500/30"
                     : "bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700"
@@ -658,7 +662,7 @@ export default function MeetingsModal({
               {/* Screen Share Toggle */}
               <button
                 onClick={toggleScreenShare}
-                className={`p-3.5 sm:px-5 sm:py-3 rounded-2xl font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg ${
+                className={`p-3 sm:px-5 sm:py-3 rounded-2xl font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg ${
                   isScreenSharing
                     ? "bg-cyan-500 text-zinc-950 hover:bg-cyan-400"
                     : "bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700"
@@ -692,6 +696,7 @@ export default function MeetingsModal({
                 </button>
               )}
             </div>
+
           </div>
         )}
       </div>

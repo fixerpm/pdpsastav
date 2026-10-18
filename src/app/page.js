@@ -125,6 +125,7 @@ export default function ChatPage() {
   const [activeChat, setActiveChat] = useState("public"); // "public" yoki user object
   const [groupSettings, setGroupSettings] = useState({ title: BRAND_CONFIG.defaultGroupTitle });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [mobileView, setMobileView] = useState("list"); // "list" | "chat"
 
   // Foydalanuvchilar va o'qilmagan xabarlar
   const [users, setUsers] = useState([]);
@@ -2216,6 +2217,7 @@ export default function ChatPage() {
 
   const handleSelectChat = (chat) => {
     setActiveChat(chat);
+    setMobileView("chat");
     if (chat !== "public") {
       setUnreadCounts((prev) => ({ ...prev, [chat.id]: 0 }));
     }
@@ -2225,7 +2227,7 @@ export default function ChatPage() {
   const currentTypingUser = typingUsers[currentChatKey];
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-zinc-100 font-sans selection:bg-cyan-500/30 overflow-hidden relative">
+    <div className="flex h-[100dvh] max-h-[100dvh] w-full bg-zinc-950 text-zinc-100 font-sans selection:bg-cyan-500/30 overflow-hidden relative">
       {/* Chap Navigatsiya Ustuni (Navigation Rail) */}
       <NavigationRail
         activeView={activeView}
@@ -2241,10 +2243,12 @@ export default function ChatPage() {
         currentUser={currentUser}
         onOpenNotifications={() => setIsNotificationOpen((prev) => !prev)}
         isNotificationOpen={isNotificationOpen}
+        mobileHidden={mobileView === "chat"}
       />
 
       {/* Chap Sidebar (Suhbatlar va Foydalanuvchilar) */}
       <ChatSidebar
+        mobileView={mobileView}
         users={displaySidebarUsers}
         groupSettings={groupSettings}
         activeChat={activeChat}
@@ -2264,13 +2268,26 @@ export default function ChatPage() {
       />
 
       {/* Asosiy Chat Oynasi */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
+      <div className={`${mobileView === "list" ? "hidden md:flex" : "flex"} flex-1 flex-col h-full min-w-0`}>
         {/* Header */}
         <header className="shrink-0 border-b border-zinc-800/80 bg-zinc-900/50 backdrop-blur-md px-3 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            {/* Mobil orqaga qaytish tugmasi */}
+            <button
+              onClick={() => setMobileView("list")}
+              className="md:hidden flex items-center gap-1.5 p-2 -ml-1 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-200 cursor-pointer shrink-0 transition"
+              title="Suhbatlar ro'yxatiga qaytish"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
+              </svg>
+              <span className="text-xs font-bold">Chatlar</span>
+            </button>
+
+            {/* Desktop / planshet uchun sidebar ochish tugmasi */}
             <button
               onClick={() => setIsSidebarOpen((prev) => !prev)}
-              className="p-2 -ml-1 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-300 lg:hidden cursor-pointer shrink-0"
+              className="hidden lg:hidden p-2 -ml-1 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-300 cursor-pointer shrink-0"
               title="Suhbatlar ro'yxati"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2648,7 +2665,7 @@ export default function ChatPage() {
         )}
 
         {/* Xabar kiritish va boshqaruv paneli */}
-        <footer className="shrink-0 border-t border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md p-3 sm:p-4 sticky bottom-0">
+        <footer className="shrink-0 border-t border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md p-2.5 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] sticky bottom-0 z-20">
           <div className="max-w-4xl mx-auto">
             {errorMsg && (
               <div className="mb-2 px-3 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center justify-between">
@@ -2714,11 +2731,11 @@ export default function ChatPage() {
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleSendText} className="flex items-center gap-2 sm:gap-2.5">
+              <form onSubmit={handleSendText} className="flex items-center gap-1.5 sm:gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowStickers((prev) => !prev)}
-                  className={`p-2.5 rounded-xl border transition cursor-pointer shrink-0 ${
+                  className={`p-2 sm:p-2.5 rounded-xl border transition cursor-pointer shrink-0 ${
                     showStickers
                       ? "bg-cyan-500/20 border-cyan-400 text-cyan-300"
                       : "bg-zinc-800/80 border-zinc-700/80 hover:bg-zinc-800 text-zinc-300"
@@ -2731,7 +2748,7 @@ export default function ChatPage() {
                 <button
                   type="button"
                   onClick={startVideoRecording}
-                  className="p-2.5 rounded-xl bg-zinc-800/80 border border-zinc-700/80 hover:bg-zinc-800 text-zinc-300 transition cursor-pointer shrink-0"
+                  className="p-2 sm:p-2.5 rounded-xl bg-zinc-800/80 border border-zinc-700/80 hover:bg-zinc-800 text-zinc-300 transition cursor-pointer shrink-0"
                   title="Kamera orqali videoxabar yozish"
                 >
                   📹
@@ -2740,7 +2757,7 @@ export default function ChatPage() {
                 <button
                   type="button"
                   onClick={startRecording}
-                  className="p-2.5 rounded-xl bg-zinc-800/80 border border-zinc-700/80 hover:bg-zinc-800 text-zinc-300 transition cursor-pointer shrink-0"
+                  className="p-2 sm:p-2.5 rounded-xl bg-zinc-800/80 border border-zinc-700/80 hover:bg-zinc-800 text-zinc-300 transition cursor-pointer shrink-0"
                   title="Ovozli xabar yozish"
                 >
                   🎙️
@@ -2752,17 +2769,18 @@ export default function ChatPage() {
                   onChange={handleInputChange}
                   placeholder={
                     activeChat === "public"
-                      ? `${groupSettings?.title || BRAND_CONFIG.defaultGroupTitle}ga xabar yozing... (Enter bilan yuboring)`
+                      ? `${groupSettings?.title || BRAND_CONFIG.defaultGroupTitle}ga xabar yozing...`
                       : `${activeChat.displayName}ga xabar yozing...`
                   }
-                  className="flex-1 bg-zinc-950/80 border border-zinc-800 focus:border-cyan-400/80 focus:ring-1 focus:ring-cyan-500/30 rounded-xl px-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none transition shadow-inner"
+                  className="flex-1 min-w-0 bg-zinc-950/80 border border-zinc-800 focus:border-cyan-400/80 focus:ring-1 focus:ring-cyan-500/30 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none transition shadow-inner"
                   disabled={isSending}
                 />
 
                 <button
                   type="submit"
                   disabled={!body.trim() || isSending}
-                  className="bg-gradient-to-r from-cyan-500 via-cyan-400 to-teal-400 hover:from-cyan-400 hover:to-teal-300 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-black px-4 sm:px-5 py-2.5 rounded-xl text-sm transition shadow-lg shadow-cyan-500/25 flex items-center gap-2 cursor-pointer shrink-0"
+                  className="bg-gradient-to-r from-cyan-500 via-cyan-400 to-teal-400 hover:from-cyan-400 hover:to-teal-300 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-black p-2.5 sm:px-5 sm:py-2.5 rounded-xl text-xs sm:text-sm transition shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                  title="Xabar yuborish"
                 >
                   {isSending ? (
                     <span className="w-4 h-4 border-2 border-zinc-950/20 border-t-zinc-950 rounded-full animate-spin" />
@@ -2777,6 +2795,7 @@ export default function ChatPage() {
             )}
           </div>
         </footer>
+
       </div>
 
       {/* WebRTC Audio & Video Qo'ng'iroq Modali */}

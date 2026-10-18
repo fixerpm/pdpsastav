@@ -103,15 +103,15 @@ export default function GroupsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
-      <div className="relative w-full max-w-xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh]">
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-zinc-800/80 flex items-center justify-between">
+        <div className="p-3.5 sm:p-5 border-b border-zinc-800/80 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="text-xl">🏢</span>
             <div>
-              <h3 className="text-base font-extrabold text-white tracking-wide">Guruhlar</h3>
-              <p className="text-xs text-zinc-400">Jamoaviy muloqot va guruhlarni boshqarish</p>
+              <h3 className="text-sm sm:text-base font-extrabold text-white tracking-wide">Guruhlar</h3>
+              <p className="text-[11px] sm:text-xs text-zinc-400">Jamoaviy muloqot va guruhlarni boshqarish</p>
             </div>
           </div>
           <button
@@ -123,7 +123,7 @@ export default function GroupsModal({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-zinc-800 bg-zinc-900/50 px-3 pt-2 gap-2 text-xs font-semibold">
+        <div className="flex border-b border-zinc-800 bg-zinc-900/50 px-3 pt-2 gap-2 text-xs font-semibold overflow-x-auto no-scrollbar shrink-0">
           <button
             onClick={() => setActiveTab("groups")}
             className={`pb-2.5 px-3 transition border-b-2 cursor-pointer ${

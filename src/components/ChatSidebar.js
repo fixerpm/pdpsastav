@@ -21,6 +21,7 @@ export default function ChatSidebar({
   currentUserId,
   groups = [],
   onOpenCreateGroup,
+  mobileView = "list",
 }) {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("all"); // "all" | "archived"
@@ -50,17 +51,21 @@ export default function ChatSidebar({
 
   return (
     <>
-      {/* Mobil uchun backdrop */}
-      {isOpen && (
+      {/* Mobil uchun backdrop (faqat drawer rejimida) */}
+      {isOpen && mobileView === "chat" && (
         <div
           onClick={onClose}
-          className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm lg:hidden transition-opacity"
+          className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm md:hidden transition-opacity"
         />
       )}
 
       <aside
-        className={`fixed lg:static top-0 bottom-0 left-0 z-40 w-72 sm:w-80 bg-zinc-950/95 lg:bg-zinc-950/70 border-r border-zinc-800/80 flex flex-col transition-transform duration-300 backdrop-blur-xl ${
-          isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        className={`w-full md:w-80 h-full bg-zinc-950/95 md:bg-zinc-950/70 border-r border-zinc-800/80 flex flex-col shrink-0 transition-transform duration-300 backdrop-blur-xl ${
+          mobileView === "list"
+            ? "flex static z-20 pb-16 md:pb-0"
+            : isOpen
+            ? "fixed inset-y-0 left-0 z-40 w-72 sm:w-80 translate-x-0 shadow-2xl"
+            : "hidden md:flex static"
         }`}
       >
         {/* Sidebar Header with PDP SASTAV Brand Avatar */}

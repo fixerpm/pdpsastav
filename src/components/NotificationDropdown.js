@@ -14,7 +14,7 @@ export default function NotificationDropdown({
   return (
     <>
       <div onClick={onClose} className="fixed inset-0 z-40 bg-transparent" />
-      <div className="absolute top-12 right-2 sm:right-6 z-50 w-80 sm:w-96 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-fade-in">
+      <div className="absolute top-12 right-1 sm:right-6 z-50 w-[calc(100vw-1rem)] sm:w-96 max-w-sm bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80dvh] animate-fade-in">
         {/* Header */}
         <div className="p-3.5 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
           <div className="flex items-center gap-2">
