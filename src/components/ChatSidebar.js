@@ -51,18 +51,10 @@ export default function ChatSidebar({
 
   return (
     <>
-      {/* Mobil va planshet uchun backdrop */}
-      {isOpen && (
-        <div
-          onClick={onClose}
-          className="fixed inset-0 z-30 bg-black/70 backdrop-blur-sm lg:hidden transition-opacity"
-        />
-      )}
-
       <aside
-        className={`fixed lg:static top-0 bottom-0 left-0 z-40 w-72 sm:w-80 bg-zinc-950/95 lg:bg-zinc-950/70 border-r border-zinc-800/80 flex flex-col transition-transform duration-300 backdrop-blur-xl ${
-          isOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full lg:translate-x-0"
-        }`}
+        className={`${
+          mobileView === "chat" ? "hidden lg:flex" : "flex w-full"
+        } lg:w-80 lg:static top-0 bottom-0 left-0 z-20 bg-zinc-950 lg:bg-zinc-950/70 border-r-0 lg:border-r border-zinc-800/80 flex-col h-full overflow-hidden backdrop-blur-xl shrink-0`}
       >
         {/* Sidebar Header with PDP SASTAV Brand Avatar */}
         <div className="p-3.5 sm:p-4 border-b border-zinc-800/80 flex items-center justify-between">
@@ -94,14 +86,6 @@ export default function ChatSidebar({
               </div>
             </div>
           </div>
-
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 lg:hidden cursor-pointer"
-            title="Yopish"
-          >
-            ✕
-          </button>
         </div>
 
         {/* Qidiruv */}
@@ -168,7 +152,7 @@ export default function ChatSidebar({
         </div>
 
         {/* Ro'yxat */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1 pb-20 lg:pb-3">
           {/* Umumiy guruh chati (faqat "Barchasi" tabida) */}
           {activeTab === "all" && (
             <div

@@ -11,6 +11,7 @@ export default function NavigationRail({
   currentUser,
   onOpenNotifications,
   isNotificationOpen,
+  mobileView = "list",
 }) {
   const navItems = [
     {
@@ -93,103 +94,219 @@ export default function NavigationRail({
   ];
 
   return (
-    <aside className="w-14 sm:w-16 bg-zinc-950/90 border-r border-zinc-800/80 flex flex-col items-center py-3 sm:py-4 justify-between z-30 shrink-0">
-      {/* Brand Logo */}
-      <div className="flex flex-col items-center gap-3">
-        <div
-          onClick={() => onSelectView("chats")}
-          className="relative group cursor-pointer transition transform hover:scale-105"
-          title={BRAND_CONFIG.name}
-        >
-          <Image
-            src={BRAND_CONFIG.avatarUrl}
-            alt={BRAND_CONFIG.name}
-            width={38}
-            height={38}
-            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/25"
-            priority
-          />
-          <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-400 border border-zinc-950" />
+    <>
+      {/* 1. Desktop Chap Navigatsiya Ustuni (lg va undan katta ekranlar) */}
+      <aside className="hidden lg:flex w-16 bg-zinc-950/90 border-r border-zinc-800/80 flex-col items-center py-4 justify-between z-30 shrink-0">
+        {/* Brand Logo */}
+        <div className="flex flex-col items-center gap-3">
+          <div
+            onClick={() => onSelectView("chats")}
+            className="relative group cursor-pointer transition transform hover:scale-105"
+            title={BRAND_CONFIG.name}
+          >
+            <Image
+              src={BRAND_CONFIG.avatarUrl}
+              alt={BRAND_CONFIG.name}
+              width={38}
+              height={38}
+              className="w-9 h-9 rounded-full object-cover ring-2 ring-cyan-500/60 shadow-lg shadow-cyan-500/25"
+              priority
+            />
+            <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-zinc-950" />
+          </div>
+
+          {/* Separator */}
+          <div className="w-8 h-px bg-zinc-800 my-1" />
+
+          {/* Main Nav Items */}
+          <nav className="flex flex-col items-center gap-2">
+            {navItems.map((item) => {
+              const isActive = activeView === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => onSelectView(item.id)}
+                  className={`relative w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer group ${
+                    isActive
+                      ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 shadow-md shadow-cyan-500/10"
+                      : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+                  }`}
+                  title={item.label}
+                >
+                  {item.icon}
+
+                  {/* Badge indicator */}
+                  {item.badge && (
+                    <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-cyan-500 text-zinc-950 text-[9px] font-extrabold rounded-full">
+                      {item.badge}
+                    </span>
+                  )}
+
+                  {/* Active indicator bar */}
+                  {isActive && (
+                    <span className="absolute -left-2 top-2 bottom-2 w-1 bg-cyan-400 rounded-r-full" />
+                  )}
+                </button>
+              );
+            })}
+          </nav>
         </div>
 
-        {/* Separator */}
-        <div className="w-6 sm:w-8 h-px bg-zinc-800 my-1" />
-
-        {/* Main Nav Items */}
-        <nav className="flex flex-col items-center gap-1.5 sm:gap-2">
-          {navItems.map((item) => {
-            const isActive = activeView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => onSelectView(item.id)}
-                className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition cursor-pointer group ${
-                  isActive
-                    ? "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 shadow-md shadow-cyan-500/10"
-                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
-                }`}
-                title={item.label}
-              >
-                {item.icon}
-
-                {/* Badge indicator */}
-                {item.badge && (
-                  <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-cyan-500 text-zinc-950 text-[9px] font-extrabold rounded-full">
-                    {item.badge}
-                  </span>
-                )}
-
-                {/* Active indicator bar */}
-                {isActive && (
-                  <span className="absolute -left-1 sm:-left-2 top-2 bottom-2 w-1 bg-cyan-400 rounded-r-full" />
-                )}
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* Bottom Section: Notifications & User Avatar */}
-      <div className="flex flex-col items-center gap-2.5 sm:gap-3">
-        {/* Notification Bell */}
-        <button
-          onClick={onOpenNotifications}
-          className={`relative w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center transition cursor-pointer ${
-            isNotificationOpen
-              ? "bg-cyan-500/20 text-cyan-400"
-              : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
-          }`}
-          title="Bildirishnomalar"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-            />
-          </svg>
-          {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
-          )}
-        </button>
-
-        {/* User Avatar */}
-        <button
-          onClick={() => onSelectView("settings")}
-          className="relative group cursor-pointer transition transform hover:scale-105"
-          title={`${currentUser?.displayName || "Profil"} sozlamalari`}
-        >
-          <div
-            className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center font-bold text-white text-xs bg-gradient-to-tr ${
-              currentUser?.avatarBg || "from-cyan-500 to-blue-600"
-            } shadow-md ring-2 ring-zinc-800 group-hover:ring-cyan-500/60 transition`}
+        {/* Bottom Section: Notifications & User Avatar */}
+        <div className="flex flex-col items-center gap-3">
+          {/* Notification Bell */}
+          <button
+            onClick={onOpenNotifications}
+            className={`relative w-10 h-10 rounded-xl flex items-center justify-center transition cursor-pointer ${
+              isNotificationOpen
+                ? "bg-cyan-500/20 text-cyan-400"
+                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900"
+            }`}
+            title="Bildirishnomalar"
           >
-            {currentUser?.avatarText || currentUser?.username?.slice(0, 2).toUpperCase() || "U"}
-          </div>
-          <span className="absolute bottom-0 right-0 w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-400 border border-zinc-950" />
-        </button>
-      </div>
-    </aside>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+              />
+            </svg>
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+            )}
+          </button>
+
+          {/* User Avatar */}
+          <button
+            onClick={() => onSelectView("settings")}
+            className="relative group cursor-pointer transition transform hover:scale-105"
+            title={`${currentUser?.displayName || "Profil"} sozlamalari`}
+          >
+            <div
+              className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-white text-xs bg-gradient-to-tr ${
+                currentUser?.avatarBg || "from-cyan-500 to-blue-600"
+              } shadow-md ring-2 ring-zinc-800 group-hover:ring-cyan-500/60 transition`}
+            >
+              {currentUser?.avatarText || currentUser?.username?.slice(0, 2).toUpperCase() || "U"}
+            </div>
+            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-zinc-950" />
+          </button>
+        </div>
+      </aside>
+
+      {/* 2. Mobil Pastki Navigatsiya Paneli (faqat mobil ekranlar va list rejimida) */}
+      {mobileView === "list" && (
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-zinc-950/95 border-t border-zinc-800/80 px-2 py-1.5 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex items-center justify-around backdrop-blur-xl">
+          {/* Chatlar */}
+          <button
+            onClick={() => onSelectView("chats")}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition cursor-pointer min-w-[44px] min-h-[44px] ${
+              activeView === "chats"
+                ? "text-cyan-400 bg-cyan-500/10 font-bold"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <div className="relative">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </div>
+            <span className="text-[10px] mt-0.5 tracking-tight">Chatlar</span>
+          </button>
+
+          {/* Kontaktlar */}
+          <button
+            onClick={() => onSelectView("contacts")}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition cursor-pointer min-w-[44px] min-h-[44px] ${
+              activeView === "contacts"
+                ? "text-cyan-400 bg-cyan-500/10 font-bold"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <div className="relative">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              {incomingRequestsCount > 0 && (
+                <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-cyan-500 text-zinc-950 text-[9px] font-black rounded-full">
+                  {incomingRequestsCount}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] mt-0.5 tracking-tight">Kontaktlar</span>
+          </button>
+
+          {/* Guruhlar */}
+          <button
+            onClick={() => onSelectView("groups")}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition cursor-pointer min-w-[44px] min-h-[44px] ${
+              activeView === "groups"
+                ? "text-cyan-400 bg-cyan-500/10 font-bold"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            <span className="text-[10px] mt-0.5 tracking-tight">Guruhlar</span>
+          </button>
+
+          {/* Uchrashuv */}
+          <button
+            onClick={() => onSelectView("meetings")}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition cursor-pointer min-w-[44px] min-h-[44px] ${
+              activeView === "meetings"
+                ? "text-cyan-400 bg-cyan-500/10 font-bold"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+            <span className="text-[10px] mt-0.5 tracking-tight">Uchrashuv</span>
+          </button>
+
+          {/* Bildirishnomalar */}
+          <button
+            onClick={onOpenNotifications}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition cursor-pointer min-w-[44px] min-h-[44px] ${
+              isNotificationOpen
+                ? "text-cyan-400 bg-cyan-500/10 font-bold"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <div className="relative">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+              </svg>
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+              )}
+            </div>
+            <span className="text-[10px] mt-0.5 tracking-tight">Xabarlar</span>
+          </button>
+
+          {/* Sozlamalar / Profil */}
+          <button
+            onClick={() => onSelectView("settings")}
+            className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition cursor-pointer min-w-[44px] min-h-[44px] ${
+              activeView === "settings"
+                ? "text-cyan-400 bg-cyan-500/10 font-bold"
+                : "text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            <div
+              className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-white text-[9px] bg-gradient-to-tr ${
+                currentUser?.avatarBg || "from-cyan-500 to-blue-600"
+              } shadow-sm`}
+            >
+              {currentUser?.avatarText || currentUser?.username?.slice(0, 1).toUpperCase() || "U"}
+            </div>
+            <span className="text-[10px] mt-0.5 tracking-tight">Profil</span>
+          </button>
+        </nav>
+      )}
+    </>
   );
 }

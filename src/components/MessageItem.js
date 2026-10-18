@@ -332,7 +332,7 @@ export default function MessageItem({
                       src={msg.mediaUrl}
                       controls
                       preload="metadata"
-                      className="w-56 sm:w-64 h-9 accent-cyan-400 rounded-lg outline-none"
+                      className="w-full max-w-[210px] sm:max-w-[250px] h-9 accent-cyan-400 rounded-lg outline-none"
                     />
                   ) : (
                     <div className="text-xs italic opacity-75">
@@ -349,7 +349,7 @@ export default function MessageItem({
                     <span>📹 Videoxabar</span>
                   </div>
                   {msg.mediaUrl ? (
-                    <div className="relative w-48 h-48 sm:w-56 sm:h-56 rounded-full overflow-hidden border-2 border-cyan-400/80 shadow-xl shadow-cyan-950/50 bg-black mx-auto">
+                    <div className="relative w-40 h-40 sm:w-56 sm:h-56 rounded-full overflow-hidden border-2 border-cyan-400/80 shadow-xl shadow-cyan-950/50 bg-black mx-auto">
                       <video
                         src={msg.mediaUrl}
                         controls
@@ -368,7 +368,7 @@ export default function MessageItem({
 
               {/* Oddiy matn */}
               {!isSticker && !isVoice && !isVideo && (
-                <p className="text-xs sm:text-sm whitespace-pre-wrap break-words leading-relaxed select-text">
+                <p className="text-xs sm:text-sm whitespace-pre-wrap break-words [word-break:break-word] leading-relaxed select-text">
                   {msg.body}
                 </p>
               )}

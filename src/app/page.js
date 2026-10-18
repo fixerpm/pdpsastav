@@ -123,6 +123,7 @@ export default function ChatPage() {
 
   // Tanlangan chat va guruh sozlamalari
   const [activeChat, setActiveChat] = useState("public"); // "public" yoki user object
+  const [mobileView, setMobileView] = useState("list"); // "list" | "chat"
   const [groupSettings, setGroupSettings] = useState({ title: BRAND_CONFIG.defaultGroupTitle });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -2216,6 +2217,7 @@ export default function ChatPage() {
 
   const handleSelectChat = (chat) => {
     setActiveChat(chat);
+    setMobileView("chat");
     setIsSidebarOpen(false);
     if (chat !== "public") {
       setUnreadCounts((prev) => ({ ...prev, [chat.id]: 0 }));
@@ -2232,6 +2234,7 @@ export default function ChatPage() {
         activeView={activeView}
         onSelectView={(view) => {
           setActiveView(view);
+          if (view === "chats") setMobileView("list");
           if (view === "contacts") setIsContactsModalOpen(true);
           if (view === "groups") setIsGroupsModalOpen(true);
           if (view === "meetings") setIsMeetingsModalOpen(true);
@@ -2242,6 +2245,7 @@ export default function ChatPage() {
         currentUser={currentUser}
         onOpenNotifications={() => setIsNotificationOpen((prev) => !prev)}
         isNotificationOpen={isNotificationOpen}
+        mobileView={mobileView}
       />
 
       {/* Chap Sidebar (Suhbatlar va Foydalanuvchilar) */}
@@ -2262,21 +2266,22 @@ export default function ChatPage() {
         currentUserId={currentUser?.id}
         groups={convexGroups || []}
         onOpenCreateGroup={() => setIsGroupsModalOpen(true)}
+        mobileView={mobileView}
       />
 
       {/* Asosiy Chat Oynasi */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
+      <div className={`${mobileView === "list" ? "hidden lg:flex" : "flex w-full"} flex-1 flex-col h-full min-w-0`}>
         {/* Header */}
         <header className="shrink-0 border-b border-zinc-800/80 bg-zinc-900/50 backdrop-blur-md px-3 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* Mobil va planshet uchun sidebar ochish tugmasi */}
+            {/* Mobil ekranlar uchun chatlar ro'yxatiga qaytish (Back) tugmasi */}
             <button
-              onClick={() => setIsSidebarOpen((prev) => !prev)}
-              className="p-2 -ml-1 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-300 lg:hidden cursor-pointer shrink-0"
-              title="Suhbatlar ro'yxati"
+              onClick={() => setMobileView("list")}
+              className="p-2 -ml-1 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-300 lg:hidden cursor-pointer shrink-0 flex items-center justify-center min-w-[40px] min-h-[40px]"
+              title="Chatlar ro‘yxatiga qaytish"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
 

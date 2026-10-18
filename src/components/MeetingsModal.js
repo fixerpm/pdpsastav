@@ -693,8 +693,8 @@ export default function MeetingsModal({
   const isHost = meeting?.hostUserId === currentUser?.id;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-xl animate-fade-in">
-      <div className="relative w-full max-w-5xl h-[92vh] max-h-[850px] bg-zinc-950 border border-zinc-800 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/95 backdrop-blur-xl animate-fade-in">
+      <div className="relative w-full h-[100dvh] sm:h-[92vh] sm:max-h-[850px] max-w-5xl bg-zinc-950 border-0 sm:border border-zinc-800 rounded-none sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden">
         {/* Glow Effects */}
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
@@ -1016,7 +1016,7 @@ export default function MeetingsModal({
               {/* Screen Share Toggle */}
               <button
                 onClick={toggleScreenShare}
-                className={`p-3 sm:px-5 sm:py-3 rounded-2xl font-bold text-xs flex items-center gap-2 transition cursor-pointer shadow-lg ${
+                className={`hidden sm:flex p-3 sm:px-5 sm:py-3 rounded-2xl font-bold text-xs items-center gap-2 transition cursor-pointer shadow-lg ${
                   isScreenSharing
                     ? "bg-cyan-500 text-zinc-950 hover:bg-cyan-400"
                     : "bg-zinc-800 hover:bg-zinc-700 text-white border border-zinc-700"
