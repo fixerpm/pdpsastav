@@ -125,7 +125,6 @@ export default function ChatPage() {
   const [activeChat, setActiveChat] = useState("public"); // "public" yoki user object
   const [groupSettings, setGroupSettings] = useState({ title: BRAND_CONFIG.defaultGroupTitle });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [mobileView, setMobileView] = useState("list"); // "list" | "chat"
 
   // Foydalanuvchilar va o'qilmagan xabarlar
   const [users, setUsers] = useState([]);
@@ -2217,7 +2216,7 @@ export default function ChatPage() {
 
   const handleSelectChat = (chat) => {
     setActiveChat(chat);
-    setMobileView("chat");
+    setIsSidebarOpen(false);
     if (chat !== "public") {
       setUnreadCounts((prev) => ({ ...prev, [chat.id]: 0 }));
     }
@@ -2243,12 +2242,10 @@ export default function ChatPage() {
         currentUser={currentUser}
         onOpenNotifications={() => setIsNotificationOpen((prev) => !prev)}
         isNotificationOpen={isNotificationOpen}
-        mobileHidden={mobileView === "chat"}
       />
 
       {/* Chap Sidebar (Suhbatlar va Foydalanuvchilar) */}
       <ChatSidebar
-        mobileView={mobileView}
         users={displaySidebarUsers}
         groupSettings={groupSettings}
         activeChat={activeChat}
@@ -2268,29 +2265,17 @@ export default function ChatPage() {
       />
 
       {/* Asosiy Chat Oynasi */}
-      <div className={`${mobileView === "list" ? "hidden md:flex" : "flex"} flex-1 flex-col h-full min-w-0`}>
+      <div className="flex-1 flex flex-col h-full min-w-0">
         {/* Header */}
         <header className="shrink-0 border-b border-zinc-800/80 bg-zinc-900/50 backdrop-blur-md px-3 sm:px-6 py-3 flex items-center justify-between sticky top-0 z-10">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* Mobil orqaga qaytish tugmasi */}
-            <button
-              onClick={() => setMobileView("list")}
-              className="md:hidden flex items-center gap-1.5 p-2 -ml-1 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-200 cursor-pointer shrink-0 transition"
-              title="Suhbatlar ro'yxatiga qaytish"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" />
-              </svg>
-              <span className="text-xs font-bold">Chatlar</span>
-            </button>
-
-            {/* Desktop / planshet uchun sidebar ochish tugmasi */}
+            {/* Mobil va planshet uchun sidebar ochish tugmasi */}
             <button
               onClick={() => setIsSidebarOpen((prev) => !prev)}
-              className="hidden lg:hidden p-2 -ml-1 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-300 cursor-pointer shrink-0"
+              className="p-2 -ml-1 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700/60 text-zinc-300 lg:hidden cursor-pointer shrink-0"
               title="Suhbatlar ro'yxati"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
