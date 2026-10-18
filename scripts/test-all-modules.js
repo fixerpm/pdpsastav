@@ -526,6 +526,187 @@ async function runTests() {
     }
   });
 
+  // 20. Contacts canonical ID mapping
+  await test("20. Kontaktlar ro'yxatida id va userId mosligi (u.userId)", async () => {
+    const contactsOfA = await callQuery("contacts:listContacts", { userId: userA.id });
+    const bInContacts = contactsOfA.find((c) => c.username === userB.username);
+    if (!bInContacts) throw new Error("User B User A ning kontaktlarida topilmadi");
+    if (bInContacts.id !== userB.id) {
+      throw new Error(`Kontakt id noto'g'ri (contacts jadvalidagi _id bo'lib qolgan): ${bInContacts.id} !== ${userB.id}`);
+    }
+    if (bInContacts.userId !== userB.id) {
+      throw new Error(`Kontakt userId noto'g'ri: ${bInContacts.userId} !== ${userB.id}`);
+    }
+  });
+
+  // 21. Real-time 1-on-1 Message Delivery and Privacy
+  await test("21. 1-ga-1 xabar jo'natish, ikki tomonlama yetkazish va xavfsizlik", async () => {
+    const textMsg = `Salom Madina, bugun real-time test ${testSuffix}`;
+    const sent = await callMutation("messages:send", {
+      author: userA.displayName,
+      senderId: userA.id,
+      recipientId: userB.id,
+      body: textMsg,
+      type: "text",
+    });
+
+    if (!sent) throw new Error("Xabar jo'natilmadi");
+
+    // Recipient User B queries chat with User A
+    const bChat = await callQuery("messages:list", {
+      recipientId: userA.id,
+      viewerId: userB.id,
+    });
+    const foundInB = bChat.find((m) => m.body === textMsg);
+    if (!foundInB) throw new Error("User B ning darchasida User A dan kelgan xabar topilmadi");
+    if (foundInB.senderId !== userA.id || foundInB.recipientId !== userB.id) {
+      throw new Error("Xabar senderId yoki recipientId noto'g'ri");
+    }
+
+    // Sender User A queries chat with User B
+    const aChat = await callQuery("messages:list", {
+      recipientId: userB.id,
+      viewerId: userA.id,
+    });
+    const foundInA = aChat.find((m) => m.body === textMsg);
+    if (!foundInA) throw new Error("User A ning o'z darchasida jo'natilgan xabar topilmadi");
+
+    // Unauthorized User C attempts to read 1-on-1 messages between A and B
+    const cChat = await callQuery("messages:list", {
+      recipientId: userA.id,
+      viewerId: userC.id,
+    });
+    if (cChat.some((m) => m.body === textMsg)) {
+      throw new Error("XAVFSIZLIK XATOSI: Begona User C boshqalarning 1-ga-1 xabarini o'qidi!");
+    }
+  });
+
+  // 22. WebRTC Call notification & signaling flow
+  await test("22. WebRTC qo'ng'iroq bildirishnomasi, Answer va ICE signallari almashinuvi", async () => {
+    const testCallId = `call-test-${Date.now()}`;
+    const mockOffer = { type: "offer", sdp: "v=0\r\no=mockOffer..." };
+    const mockAnswer = { type: "answer", sdp: "v=0\r\no=mockAnswer..." };
+    const mockCandidate = { candidate: "candidate:1 1 UDP...", sdpMid: "0", sdpMLineIndex: 0 };
+
+    // 1. User A initiates call to User B
+    await callMutation("notifications:sendCallNotification", {
+      recipientId: userB.id,
+      callerId: userA.id,
+      callerName: userA.displayName,
+      callerAvatarBg: "from-cyan-500 to-blue-600",
+      callId: testCallId,
+      callType: "video",
+      sdp: mockOffer,
+    });
+
+    // 2. User B checks notifications
+    const bNotifs = await callQuery("notifications:list", { userId: userB.id });
+    const callNotif = bNotifs.find((n) => n.type === "call" && !n.isRead);
+    if (!callNotif) throw new Error("User B ga kiruvchi qo'ng'iroq bildirishnomasi yetib bormadi");
+
+    const parsedData = JSON.parse(callNotif.data);
+    if (parsedData.callId !== testCallId || parsedData.callerId !== userA.id) {
+      throw new Error("Qo'ng'iroq ma'lumotlari noto'g'ri");
+    }
+
+    // 3. User B sends Answer signal back to User A
+    await callMutation("meetings:sendSignal", {
+      meetingId: testCallId,
+      senderId: userB.id,
+      targetId: userA.id,
+      type: "answer",
+      payload: JSON.stringify(mockAnswer),
+    });
+
+    // 4. User A receives Answer signal
+    const aSignals = await callQuery("meetings:getSignals", {
+      meetingId: testCallId,
+      targetId: userA.id,
+    });
+    const answerSignal = aSignals.find((s) => s.type === "answer");
+    if (!answerSignal) throw new Error("User A ga Answer signali yetib bormadi");
+
+    // 5. User A sends ICE candidate to User B
+    await callMutation("meetings:sendSignal", {
+      meetingId: testCallId,
+      senderId: userA.id,
+      targetId: userB.id,
+      type: "candidate",
+      payload: JSON.stringify(mockCandidate),
+    });
+
+    const bSignals = await callQuery("meetings:getSignals", {
+      meetingId: testCallId,
+      targetId: userB.id,
+    });
+    const candSignal = bSignals.find((s) => s.type === "candidate");
+    if (!candSignal) throw new Error("User B ga ICE candidate signali yetib bormadi");
+
+    // 6. User A ends/cancels the call notification
+    await callMutation("notifications:cancelCallNotification", {
+      callId: testCallId,
+    });
+
+    const bNotifsAfter = await callQuery("notifications:list", { userId: userB.id });
+    const callNotifAfter = bNotifsAfter.find((n) => {
+      try {
+        return JSON.parse(n.data).callId === testCallId && !n.isRead;
+      } catch (e) {
+        return false;
+      }
+    });
+    if (callNotifAfter) throw new Error("Qo'ng'iroq tugatilgach bildirishnoma tozalanmadi");
+  });
+
+  // 23. Public Meeting invitation link creation & lookup
+  await test("23. Ochiq uchrashuv taklif havolasi va qidiruv tekshiruvi", async () => {
+    const instantMeet = await callMutation("meetings:createMeeting", {
+      title: `Ochiq Uchrashuv ${testSuffix}`,
+      hostUserId: userA.id,
+      hostName: userA.displayName,
+      isAudioOnly: false,
+    });
+
+    if (!instantMeet.meetingId) throw new Error("Uchrashuv yaratilmadi");
+
+    // Lookup meeting by meetingId
+    const foundMeet = await callQuery("meetings:getMeeting", {
+      meetingId: instantMeet.meetingId,
+    });
+    if (!foundMeet || foundMeet.status !== "active") {
+      throw new Error("Taklif havolasidagi uchrashuv topilmadi yoki faol emas");
+    }
+
+    // Guest user joins
+    await callMutation("meetings:joinMeeting", {
+      meetingId: instantMeet.meetingId,
+      userId: `guest-${testSuffix}`,
+      displayName: `Mehmon ${testSuffix}`,
+    });
+
+    const afterGuestJoin = await callQuery("meetings:getMeeting", {
+      meetingId: instantMeet.meetingId,
+    });
+    if (!afterGuestJoin.participants.some((p) => p.userId === `guest-${testSuffix}`)) {
+      throw new Error("Mehmon ishtirokchi uchrashuvga qo'shilmadi");
+    }
+  });
+
+  // 24. Session validation & rejection of fake/demo users
+  await test("24. Haqiqiy sessiyani tasdiqlash va soxta demo akkauntlarni rad etish", async () => {
+    // Valid registered user
+    const valid = await callQuery("users:validateSession", { userId: userA.id });
+    if (!valid || valid.userId !== userA.id) {
+      throw new Error("Haqiqiy foydalanuvchi sessiyasi tasdiqlanmadi");
+    }
+
+    // Fake demo/guest user
+    const fake = await callQuery("users:validateSession", { userId: "fake_guest_12345" });
+    if (fake !== null) {
+      throw new Error("Soxta mehmon sessiyasi bekor qilinmadi (null qaytmadi)!");
+    }
+  });
+
   console.log("\n==================================================");
   console.log(`📊 BARCHA TESTLAR YAKUNLANDI: ${passed} O'TDI, ${failed} XATO`);
   console.log("==================================================");

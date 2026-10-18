@@ -26,7 +26,7 @@ export default function CallModal({
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
-  }, [localStream, callState.status]);
+  }, [localStream, callState.status, isVideoOff]);
 
   // Masofaviy video oqimini ulash
   useEffect(() => {

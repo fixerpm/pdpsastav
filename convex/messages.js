@@ -46,7 +46,7 @@ export const list = query({
       const combined = [...list1, ...list2].filter((m) => {
         if (m.groupId) return false;
         if (!args.viewerId) {
-          return m.recipientId === args.recipientId || m.senderId === args.recipientId;
+          return false;
         }
         return (
           (m.senderId === args.viewerId && m.recipientId === args.recipientId) ||
@@ -133,6 +133,35 @@ export const send = mutation({
 
     if (!body && !args.storageId && !args.mediaUrl) {
       throw new Error("Xabar bo'sh bo'lishi mumkin emas");
+    }
+
+    // Guruhga xabar yuborishda a'zolikni tekshirish
+    if (args.groupId) {
+      const group = await ctx.db
+        .query("groups")
+        .withIndex("by_groupId", (q) => q.eq("groupId", args.groupId))
+        .first();
+      if (!group) throw new Error("Guruh topilmadi");
+      if (args.senderId) {
+        const isMember = group.memberIds.includes(args.senderId) || group.ownerId === args.senderId;
+        if (!isMember) {
+          throw new Error("Siz ushbu guruh a'zosi emassiz");
+        }
+      }
+    }
+
+    // 1-on-1 xabarlarda autentifikatsiya va bloklanganlikni tekshirish
+    if (!args.groupId && args.recipientId && args.recipientId !== "public") {
+      if (!args.senderId) {
+        throw new Error("Shaxsiy xabar yuborish uchun tizimga kirish shart");
+      }
+      const recipient = await ctx.db
+        .query("users")
+        .withIndex("by_userId", (q) => q.eq("userId", args.recipientId))
+        .first();
+      if (recipient && Array.isArray(recipient.blockedUserIds) && recipient.blockedUserIds.includes(args.senderId)) {
+        throw new Error("Ushbu foydalanuvchi sizni bloklagan");
+      }
     }
 
     const messageId = await ctx.db.insert("messages", {

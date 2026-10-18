@@ -157,17 +157,30 @@ export default function MeetingsModal({
     }
   };
 
+  const [guestDisplayName, setGuestDisplayName] = useState("");
+
+  useEffect(() => {
+    if (meeting?.meetingId && !joinMeetingId) {
+      setJoinMeetingId(meeting.meetingId);
+    }
+  }, [meeting?.meetingId, joinMeetingId]);
+
   // Join Existing Meeting
   const handleJoinExisting = async (e) => {
     if (e) e.preventDefault();
-    const cleanId = joinMeetingId.trim().toLowerCase();
+    const cleanId = (joinMeetingId || meeting?.meetingId || "").trim().toLowerCase();
     if (!cleanId || isJoiningMeeting) return;
+
+    if (!currentUser && !guestDisplayName.trim()) {
+      setFeedback("Uchrashuvga qo‘shilish uchun ismingizni kiriting");
+      return;
+    }
 
     setIsJoiningMeeting(true);
     setFeedback("");
     try {
       await initUserMedia(isAudioOnly);
-      await onJoinMeeting(cleanId, isAudioOnly);
+      await onJoinMeeting(cleanId, isAudioOnly, guestDisplayName.trim() || undefined);
       setActiveMeetingId(cleanId);
       setMeetingMode("in-meeting");
     } catch (err) {
@@ -191,17 +204,56 @@ export default function MeetingsModal({
     }
   };
 
-  // Toggle Video
+  // Toggle Video (Takroriy yoqish/o'chirish imkoniyati bilan)
   const toggleVideo = async () => {
-    if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        const newOff = !videoTrack.enabled;
-        setIsVideoOff(newOff);
-        if (activeMeetingId && onUpdateMediaState) {
-          onUpdateMediaState(activeMeetingId, { isVideoOff: newOff });
+    const currentTrack = localStream?.getVideoTracks()[0];
+    const shouldEnable = isVideoOff || !currentTrack || currentTrack.readyState === "ended";
+
+    if (shouldEnable) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+        const newTrack = stream.getVideoTracks()[0];
+        if (newTrack) {
+          if (localStream) {
+            localStream.getVideoTracks().forEach((t) => {
+              try { t.stop(); } catch (e) {}
+              localStream.removeTrack(t);
+            });
+            localStream.addTrack(newTrack);
+          } else {
+            setLocalStream(stream);
+          }
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = localStream || stream;
+          }
+          setIsVideoOff(false);
+          if (activeMeetingId && onUpdateMediaState) {
+            onUpdateMediaState(activeMeetingId, { isVideoOff: false });
+          }
         }
+      } catch (err) {
+        console.warn("Video toggle error:", err);
+        let msg = "Kamerani yoqib bo‘lmadi.";
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          msg = "Kameradan foydalanishga ruxsat berilmadi.";
+        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+          msg = "Qurilmada kamera topilmadi.";
+        }
+        setFeedback(msg);
+      }
+    } else {
+      if (localStream) {
+        localStream.getVideoTracks().forEach((track) => {
+          track.enabled = false;
+          track.stop();
+          localStream.removeTrack(track);
+        });
+      }
+      setIsVideoOff(true);
+      if (activeMeetingId && onUpdateMediaState) {
+        onUpdateMediaState(activeMeetingId, { isVideoOff: true });
       }
     }
   };
@@ -263,11 +315,28 @@ export default function MeetingsModal({
     onClose();
   };
 
-  const copyMeetingLink = () => {
-    const url = typeof window !== "undefined" ? `${window.location.origin}/?meet=${activeMeetingId}` : activeMeetingId;
-    navigator.clipboard.writeText(url);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2500);
+  const copyMeetingLink = async () => {
+    const origin = typeof window !== "undefined" && window.location.origin ? window.location.origin : "https://pdpsastav.vercel.app";
+    const url = `${origin}/?meet=${activeMeetingId}`;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = url;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch (err) {
+      console.error("Clipboard copy error:", err);
+      setFeedback(`Havolani nusxalashda xatolik. Qo‘lda nusxalang: ${url}`);
+    }
   };
 
   const participants = meeting?.participants || [
@@ -353,7 +422,26 @@ export default function MeetingsModal({
 
         {/* MODE 1: LOBBY */}
         {meetingMode === "lobby" ? (
-          <div className="flex-1 flex flex-col md:flex-row items-center justify-center p-6 gap-8 overflow-y-auto">
+          <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6 overflow-y-auto">
+            {meeting && meeting.title && (
+              <div className="w-full max-w-2xl bg-cyan-500/10 border border-cyan-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+                <div>
+                  <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">Taklif qilingan uchrashuv:</span>
+                  <h3 className="text-base font-extrabold text-white">{meeting.title}</h3>
+                  <p className="text-[11px] text-zinc-400">Boshlovchi: {meeting.hostName} • {meeting.participants?.length || 0} ishtirokchi</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleJoinExisting}
+                  disabled={isJoiningMeeting}
+                  className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs rounded-xl shadow-lg transition cursor-pointer shrink-0"
+                >
+                  {isJoiningMeeting ? "Ulanmoqda..." : "Hozir qo‘shilish"}
+                </button>
+              </div>
+            )}
+
+            <div className="flex flex-col md:flex-row items-center justify-center gap-8 w-full max-w-3xl">
             {/* Left Column: Create instant meeting */}
             <div className="w-full max-w-sm bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6 space-y-4">
               <div className="flex items-center gap-2.5">
@@ -413,6 +501,22 @@ export default function MeetingsModal({
               </div>
 
               <form onSubmit={handleJoinExisting} className="space-y-4">
+                {!currentUser && (
+                  <div>
+                    <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
+                      Ismingiz
+                    </label>
+                    <input
+                      type="text"
+                      value={guestDisplayName}
+                      onChange={(e) => setGuestDisplayName(e.target.value)}
+                      placeholder="Ismingizni kiriting"
+                      className="w-full bg-zinc-950 border border-zinc-800 focus:border-cyan-400 rounded-xl px-3.5 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none"
+                      required
+                    />
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-[11px] font-semibold text-zinc-300 mb-1">
                     Uchrashuv kodi (ID)
@@ -438,6 +542,7 @@ export default function MeetingsModal({
                   <span>{isJoiningMeeting ? "Ulanmoqda..." : "Qo‘shilish"}</span>
                 </button>
               </form>
+            </div>
             </div>
           </div>
         ) : (

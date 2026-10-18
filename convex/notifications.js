@@ -120,7 +120,41 @@ export const sendCallNotification = mutation({
       createdAt: new Date().toISOString(),
     });
 
+    // Shuningdek, meetingSignals jadvaliga offer signalini ham saqlaymiz (WebRTC signaling)
+    if (args.sdp) {
+      await ctx.db.insert("meetingSignals", {
+        meetingId: args.callId,
+        senderId: args.callerId,
+        targetId: args.recipientId,
+        type: "offer",
+        payload: JSON.stringify(args.sdp),
+        timestamp: Date.now(),
+      });
+    }
+
     return { success: true, notificationId: notifId };
+  },
+});
+
+// Qo'ng'iroq bekor qilinganda yoki yakunlanganda bildirishnomani tozalash
+export const cancelCallNotification = mutation({
+  args: {
+    callId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const notifs = await ctx.db
+      .query("notifications")
+      .filter((q) => q.eq(q.field("type"), "call"))
+      .collect();
+    for (const notif of notifs) {
+      try {
+        const parsed = JSON.parse(notif.data || "{}");
+        if (parsed.callId === args.callId) {
+          await ctx.db.patch(notif._id, { isRead: true });
+        }
+      } catch (e) {}
+    }
+    return { success: true };
   },
 });
 

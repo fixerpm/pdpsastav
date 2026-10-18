@@ -26,7 +26,8 @@ export const listContacts = query({
         const u = userMap.get(entry.contactUserId);
         if (!u) return null;
         return {
-          id: entry._id,
+          id: u.userId,
+          contactRecordId: entry._id,
           userId: u.userId,
           username: u.username,
           displayName: entry.customNickname || u.displayName,

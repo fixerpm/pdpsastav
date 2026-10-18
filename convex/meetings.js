@@ -297,17 +297,35 @@ export const getSignals = query({
   args: {
     meetingId: v.string(),
     targetId: v.string(),
-    sinceTimestamp: v.number(),
+    sinceTimestamp: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const since = args.sinceTimestamp || 0;
     const signals = await ctx.db
       .query("meetingSignals")
       .withIndex("by_meeting_target", (q) =>
         q.eq("meetingId", args.meetingId).eq("targetId", args.targetId)
       )
-      .filter((q) => q.gt(q.field("timestamp"), args.sinceTimestamp))
+      .filter((q) => q.gt(q.field("timestamp"), since))
       .collect();
 
     return signals;
+  },
+});
+
+// Signallarni tozalash (qo'ng'iroq / uchrashuv tugaganda)
+export const clearSignals = mutation({
+  args: {
+    meetingId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const signals = await ctx.db
+      .query("meetingSignals")
+      .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+      .collect();
+    for (const s of signals) {
+      await ctx.db.delete(s._id);
+    }
+    return { success: true };
   },
 });

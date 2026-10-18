@@ -165,6 +165,9 @@ export default function ChatPage() {
   const [iceStatus, setIceStatus] = useState("idle");
   const peerConnectionRef = useRef(null);
   const callTimerRef = useRef(null);
+  const callTargetUserIdRef = useRef(null);
+  const callStartTimeRef = useRef(0);
+  const processedSignalIdsRef = useRef(new Set());
 
   // Modallar va Navigatsiya
   const [activeView, setActiveView] = useState("chats"); // "chats" | "contacts" | "groups" | "meetings" | "settings"
@@ -179,6 +182,22 @@ export default function ChatPage() {
   const [chatSearchText, setChatSearchText] = useState("");
   const [activeMeetingRoomId, setActiveMeetingRoomId] = useState(null);
 
+  // URL orqali uchrashuv taklif havolasini ochish (?meet=...)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const meetCode = params.get("meet");
+      if (meetCode) {
+        const cleanMeetingId = meetCode.trim().toLowerCase();
+        setActiveMeetingRoomId(cleanMeetingId);
+        setIsMeetingsModalOpen(true);
+      }
+    } catch (e) {
+      console.error("URL search param parsing error:", e);
+    }
+  }, []);
+
   // Convex integratsiyasi (Real-time Cloud Database)
   const isConvexConfigured =
     typeof window !== "undefined"
@@ -189,7 +208,7 @@ export default function ChatPage() {
 
   const isGroupChat = activeChat?.type === "group" || Boolean(activeChat?.groupId);
   const activeGroupId = isGroupChat ? (activeChat.groupId || activeChat.id) : undefined;
-  const activeRecipientId = isGroupChat ? undefined : (activeChat === "public" ? "public" : (activeChat?.id || "public"));
+  const activeRecipientId = isGroupChat ? undefined : (activeChat === "public" ? "public" : (activeChat?.userId || activeChat?.id || "public"));
 
   const convexMessages = useQuery(
     api.messages.list,
@@ -215,7 +234,8 @@ export default function ChatPage() {
   const convexReact = useMutation(api.messages.react);
   const convexTogglePin = useMutation(api.messages.togglePin);
 
-  // Auth & Profile
+  // Auth & Profile & All Users
+  const convexAllUsers = useQuery(api.users.list);
   const convexRegister = useMutation(api.users.register);
   const convexLogin = useMutation(api.users.login);
   const convexUpdateProfile = useMutation(api.users.updateProfile);
@@ -248,7 +268,7 @@ export default function ChatPage() {
   const convexSetGroupAdminRole = useMutation(api.groups.setAdminRole);
   const convexUpdateGroup = useMutation(api.groups.updateGroup);
 
-  // Meetings
+  // Meetings & Signaling
   const convexCurrentMeeting = useQuery(
     api.meetings.getMeeting,
     activeMeetingRoomId ? { meetingId: activeMeetingRoomId } : "skip"
@@ -258,8 +278,18 @@ export default function ChatPage() {
   const convexLeaveMeeting = useMutation(api.meetings.leaveMeeting);
   const convexEndMeeting = useMutation(api.meetings.endMeeting);
   const convexUpdateMeetingMediaState = useMutation(api.meetings.updateMediaState);
+  const convexSendMeetingSignal = useMutation(api.meetings.sendSignal);
+  const convexSignals = useQuery(
+    api.meetings.getSignals,
+    isConvexConfigured && callState.callId && currentUser?.id
+      ? {
+          meetingId: callState.callId,
+          targetId: currentUser.id,
+        }
+      : "skip"
+  );
 
-  // Notifications
+  // Notifications & Call Notifications
   const convexNotifications = useQuery(
     api.notifications.list,
     currentUser?.id ? { userId: currentUser.id } : "skip"
@@ -270,10 +300,29 @@ export default function ChatPage() {
   );
   const convexMarkNotificationAsRead = useMutation(api.notifications.markAsRead);
   const convexMarkAllNotificationsAsRead = useMutation(api.notifications.markAllAsRead);
+  const convexCancelCallNotification = useMutation(api.notifications.cancelCallNotification);
 
   const isConvexReady = isConvexConfigured && convexMessages !== undefined;
   const rawDisplayMessages = isConvexReady && Array.isArray(convexMessages) ? convexMessages : messages;
   const isLoaded = initialLoaded || isConvexReady;
+
+  // Sidebar foydalanuvchilarini Convex va kontaktlar orqali sinxronlash
+  const displaySidebarUsers =
+    isConvexConfigured && Array.isArray(convexAllUsers)
+      ? convexAllUsers
+          .filter((u) => u.id !== currentUser?.id)
+          .map((u) => {
+            const contact = Array.isArray(convexContacts)
+              ? convexContacts.find((c) => c.id === u.id || c.userId === u.id)
+              : null;
+            return {
+              ...u,
+              displayName: contact?.displayName || u.displayName || u.username,
+              customNickname: contact?.customNickname || null,
+              isContact: Boolean(contact),
+            };
+          })
+      : users;
 
   // Yuklanish holatini hech qachon cheksiz qolib ketmasligini ta'minlash (Watchdog timer)
   useEffect(() => {
@@ -290,7 +339,7 @@ export default function ChatPage() {
 
   const pinnedMessage = rawDisplayMessages.find((m) => m.isPinned);
 
-  // 1. Dastlabki autentifikatsiya va sessiyani tiklash
+  // 1. Dastlabki autentifikatsiya va haqiqiy sessiyani tiklash
   useEffect(() => {
     async function initAuth() {
       if (typeof window === "undefined") return;
@@ -301,99 +350,63 @@ export default function ChatPage() {
         if (raw) savedUser = JSON.parse(raw);
       } catch (e) {}
 
-      let savedName = localStorage.getItem("chat_username") || savedUser?.username || "";
-      let savedToken = localStorage.getItem("chat_token") || "";
+      const savedToken = localStorage.getItem("chat_token") || "";
 
       // 1. Agar oldin ro'yxatdan o'tgan yoki kirgan haqiqiy foydalanuvchi bo'lsa
-      if (savedUser && savedUser.id && !savedUser.isAnonymous) {
-        setCurrentUser(savedUser);
-        setSessionToken(savedToken || `tok-${savedUser.id}`);
-        setAuthor(savedUser.displayName || savedUser.username);
+      if (savedUser && (savedUser.id || savedUser.userId) && !savedUser.isAnonymous) {
+        const userId = savedUser.id || savedUser.userId;
 
-        // Convex users jadvali bilan sinxronlash
+        // Convex users jadvali orqali sessiyani tasdiqlash
         if (isConvexConfigured) {
           try {
-            const convexUserRes = await convex.mutation(api.users.authenticate, {
-              username: savedUser.username,
-              displayName: savedUser.displayName || savedUser.username,
-            });
-            if (convexUserRes?.user) {
-              const merged = { ...savedUser, ...convexUserRes.user };
-              setCurrentUser(merged);
-              localStorage.setItem("chat_user", JSON.stringify(merged));
+            const validUser = await convex.query(api.users.validateSession, { userId });
+            if (validUser) {
+              const fullUser = {
+                ...savedUser,
+                ...validUser,
+                id: validUser.userId,
+                userId: validUser.userId,
+              };
+              setCurrentUser(fullUser);
+              setSessionToken(savedToken || `tok-${validUser.userId}`);
+              setAuthor(validUser.displayName || validUser.username);
+              localStorage.setItem("chat_user", JSON.stringify(fullUser));
+              return;
             }
           } catch (convexSyncErr) {
-            console.debug("Convex user sync:", convexSyncErr);
+            console.debug("Convex session validate error:", convexSyncErr);
           }
         }
-        return;
-      }
 
-      // 2. Aks holda mehmon (guest) sifatida tayyorlash
-      if (!savedName) {
-        const randomNum = Math.floor(1000 + Math.random() * 9000);
-        savedName = `Mehmon_${randomNum}`;
-        localStorage.setItem("chat_username", savedName);
-      }
-      setAuthor(savedName);
-
-      try {
-        let guestUser = {
-          id: `guest-${Math.random().toString(36).slice(2, 9)}`,
-          username: savedName,
-          displayName: savedName,
-          isAnonymous: true,
-        };
-        const guestToken = savedToken || `tok-guest-${Date.now()}`;
-
-        // Local REST auth
+        // Local REST auth tekshiruvi (fallback)
         try {
           const authRes = await fetch("/api/chat/auth", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              username: savedName,
-              displayName: savedName,
-            }),
+            headers: { Authorization: `Bearer ${savedToken}` },
           });
           if (authRes.ok) {
             const authData = await authRes.json();
-            if (authData.user) {
-              guestUser = { ...authData.user, isAnonymous: true };
+            if (authData.authenticated && authData.user) {
+              setCurrentUser(authData.user);
+              setSessionToken(savedToken);
+              setAuthor(authData.user.displayName || authData.user.username);
+              return;
             }
           }
         } catch (restErr) {
-          console.debug("REST guest auth:", restErr);
+          console.debug("REST session check error:", restErr);
         }
-
-        // Convex guest sync
-        if (isConvexConfigured) {
-          try {
-            const convexUserRes = await convex.mutation(api.users.authenticate, {
-              username: savedName,
-              displayName: savedName,
-            });
-            if (convexUserRes?.user) {
-              guestUser = {
-                ...guestUser,
-                ...convexUserRes.user,
-                id: convexUserRes.user.id,
-                userId: convexUserRes.user.id,
-                isAnonymous: true,
-              };
-            }
-          } catch (convexSyncErr) {
-            console.debug("Convex guest sync:", convexSyncErr);
-          }
-        }
-
-        setCurrentUser(guestUser);
-        setSessionToken(guestToken);
-        localStorage.setItem("chat_token", guestToken);
-        localStorage.setItem("chat_user", JSON.stringify(guestUser));
-      } catch (err) {
-        console.error("Auth init error:", err);
       }
+
+      // 2. Agar haqiqiy sessiya mavjud bo'lmasa:
+      // HECH QACHON avtomatik demo/mehmon akkaunt ochilmaydi!
+      localStorage.removeItem("chat_user");
+      localStorage.removeItem("chat_token");
+      localStorage.removeItem("chat_username");
+      localStorage.removeItem("chat_display_name");
+      setCurrentUser(null);
+      setSessionToken(null);
+      setAuthor("Foydalanuvchi");
+      setIsAuthModalOpen(true);
     }
 
     initAuth();
@@ -496,21 +509,75 @@ export default function ChatPage() {
     setIceStatus("idle");
   }, [localStream, remoteStream]);
 
-  // WebRTC Signal yuborish (REST + Convex dual signaling)
+  // WebRTC Signal yuborish (Convex Serverless + REST dual signaling)
   const sendCallSignal = useCallback(
     async (payload) => {
-      // 1. Agar Convex faol bo'lsa va meetingSignals/notifications mavjud bo'lsa
-      if (isConvexConfigured && payload.targetUserId && payload.action === "call_initiate") {
+      const targetId = payload.targetUserId || callTargetUserIdRef.current;
+
+      // 1. Convex Real-time Serverless WebRTC signaling
+      if (isConvexConfigured && payload.callId) {
         try {
-          await convex.mutation(api.notifications.sendCallNotification, {
-            recipientId: payload.targetUserId,
-            callerId: currentUser?.id || "anon",
-            callerName: currentUser?.displayName || author,
-            callerAvatarBg: currentUser?.avatarBg,
-            callId: payload.callId,
-            callType: payload.callType || "video",
-            sdp: payload.sdp,
-          });
+          if (payload.action === "call_initiate" && targetId) {
+            await convex.mutation(api.notifications.sendCallNotification, {
+              recipientId: targetId,
+              callerId: currentUser?.id || "anon",
+              callerName: currentUser?.displayName || author,
+              callerAvatarBg: currentUser?.avatarBg,
+              callId: payload.callId,
+              callType: payload.callType || "video",
+              sdp: payload.sdp,
+            });
+          } else if (payload.action === "call_accept" && targetId) {
+            await convex.mutation(api.meetings.sendSignal, {
+              meetingId: payload.callId,
+              senderId: currentUser?.id || "anon",
+              targetId,
+              type: "answer",
+              payload: JSON.stringify(payload.sdp),
+            });
+          } else if (payload.action === "ice_candidate" && targetId) {
+            await convex.mutation(api.meetings.sendSignal, {
+              meetingId: payload.callId,
+              senderId: currentUser?.id || "anon",
+              targetId,
+              type: "candidate",
+              payload: JSON.stringify(payload.candidate),
+            });
+          } else if (payload.action === "call_reject") {
+            if (targetId) {
+              await convex.mutation(api.meetings.sendSignal, {
+                meetingId: payload.callId,
+                senderId: currentUser?.id || "anon",
+                targetId,
+                type: "call_reject",
+                payload: JSON.stringify({ reason: payload.reason || "Qo'ng'iroq rad etildi" }),
+              });
+            }
+            await convex.mutation(api.notifications.cancelCallNotification, {
+              callId: payload.callId,
+            });
+          } else if (payload.action === "call_end") {
+            if (targetId) {
+              await convex.mutation(api.meetings.sendSignal, {
+                meetingId: payload.callId,
+                senderId: currentUser?.id || "anon",
+                targetId,
+                type: "call_end",
+                payload: JSON.stringify({}),
+              });
+            }
+            await convex.mutation(api.notifications.cancelCallNotification, {
+              callId: payload.callId,
+            });
+          } else if (payload.action === "media_state" && targetId) {
+            await convex.mutation(api.meetings.sendSignal, {
+              meetingId: payload.callId,
+              senderId: currentUser?.id || "anon",
+              targetId,
+              type: "media_state",
+              payload: JSON.stringify(payload),
+            });
+          }
         } catch (convexCallErr) {
           console.debug("Convex call notification fallback:", convexCallErr);
         }
@@ -526,12 +593,13 @@ export default function ChatPage() {
           },
           body: JSON.stringify({
             ...payload,
+            targetUserId: targetId,
             callerId: currentUser?.id,
             callerName: currentUser?.displayName || author,
           }),
         });
       } catch (e) {
-        console.error("Signal yuborishda xatolik:", e);
+        console.debug("Local REST call signal error:", e);
       }
     },
     [sessionToken, currentUser, author, isConvexConfigured, convex]
@@ -849,36 +917,131 @@ export default function ChatPage() {
   useEffect(() => {
     if (!convexNotifications || !Array.isArray(convexNotifications)) return;
     const incomingCallNotif = convexNotifications.find((n) => n.type === "call" && !n.isRead);
-    if (incomingCallNotif && callState.status === "idle") {
-      try {
-        const callData = JSON.parse(incomingCallNotif.data || "{}");
-        if (callData.callId && callData.sdp) {
-          setTimeout(() => {
-            setCallState({
-              status: "incoming",
-              callId: callData.callId,
-              callType: callData.callType || "video",
-              otherUser: {
-                id: callData.callerId,
-                displayName: callData.callerName,
-                avatarBg: callData.callerAvatarBg,
-              },
-              incomingOfferSdp: callData.sdp,
-              error: null,
-            });
-          }, 0);
-          if (currentUser?.id) {
-            convexMarkNotificationAsRead({
-              notificationId: incomingCallNotif._id,
-              userId: currentUser.id,
-            }).catch(() => {});
-          }
+    if (!incomingCallNotif) return;
+
+    try {
+      const callData = JSON.parse(incomingCallNotif.data || "{}");
+      if (!callData.callId) return;
+
+      // Agar foydalanuvchi allaqachon qo'ng'iroqda bo'lsa
+      if (callState.status !== "idle") {
+        if (callData.callerId) {
+          sendCallSignal({
+            action: "call_reject",
+            callId: callData.callId,
+            targetUserId: callData.callerId,
+            reason: "Foydalanuvchi boshqa qo'ng'iroqda band",
+          });
         }
-      } catch (err) {
-        console.debug("Parse call notif error:", err);
+        if (currentUser?.id) {
+          convexMarkNotificationAsRead({
+            notificationId: incomingCallNotif._id,
+            userId: currentUser.id,
+          }).catch(() => {});
+        }
+        return;
+      }
+
+      if (callData.sdp) {
+        callTargetUserIdRef.current = callData.callerId;
+        callStartTimeRef.current = Date.now();
+        processedSignalIdsRef.current.clear();
+
+        setCallState({
+          status: "incoming",
+          callId: callData.callId,
+          callType: callData.callType || "video",
+          otherUser: {
+            id: callData.callerId,
+            displayName: callData.callerName,
+            avatarBg: callData.callerAvatarBg,
+          },
+          incomingOfferSdp: callData.sdp,
+          error: null,
+        });
+
+        if (currentUser?.id) {
+          convexMarkNotificationAsRead({
+            notificationId: incomingCallNotif._id,
+            userId: currentUser.id,
+          }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.debug("Parse call notif error:", err);
+    }
+  }, [convexNotifications, callState.status, currentUser?.id, convexMarkNotificationAsRead, sendCallSignal]);
+
+  // Convex orqali WebRTC signallarini qabul qilish (Answer, ICE candidate, Reject, End)
+  useEffect(() => {
+    if (!convexSignals || !Array.isArray(convexSignals)) return;
+
+    for (const signal of convexSignals) {
+      if (processedSignalIdsRef.current.has(signal._id)) continue;
+      processedSignalIdsRef.current.add(signal._id);
+
+      try {
+        const payload = JSON.parse(signal.payload || "{}");
+
+        if (signal.type === "answer") {
+          const pc = peerConnectionRef.current;
+          if (pc && pc.signalingState === "have-local-offer") {
+            pc.setRemoteDescription(new RTCSessionDescription(payload))
+              .then(() => {
+                setCallState((prev) => ({ ...prev, status: "connected" }));
+                if (!callTimerRef.current) {
+                  callTimerRef.current = setInterval(() => {
+                    setCallDuration((prev) => prev + 1);
+                  }, 1000);
+                }
+              })
+              .catch((err) => console.error("Set remote description error:", err));
+          }
+        } else if (signal.type === "candidate") {
+          const pc = peerConnectionRef.current;
+          if (pc && payload.candidate) {
+            pc.addIceCandidate(new RTCIceCandidate(payload)).catch((err) =>
+              console.debug("Add ICE candidate error:", err)
+            );
+          }
+        } else if (signal.type === "call_reject") {
+          setCallState({
+            status: "idle",
+            callId: null,
+            callType: "video",
+            otherUser: null,
+            incomingOfferSdp: null,
+            error: payload.reason || "Qo‘ng‘iroq rad etildi",
+          });
+          cleanupMediaStreams();
+        } else if (signal.type === "call_end") {
+          setCallState({
+            status: "idle",
+            callId: null,
+            callType: "video",
+            otherUser: null,
+            incomingOfferSdp: null,
+            error: null,
+          });
+          cleanupMediaStreams();
+        } else if (signal.type === "media_state") {
+          console.debug("Remote media state changed:", payload);
+        }
+      } catch (e) {
+        console.debug("Signal parse error:", e);
       }
     }
-  }, [convexNotifications, callState.status, currentUser?.id, convexMarkNotificationAsRead]);
+  }, [convexSignals, cleanupMediaStreams]);
+
+  // 40 soniyalik chiquvchi qo'ng'iroq timeout
+  useEffect(() => {
+    if (callState.status === "calling") {
+      const timer = setTimeout(() => {
+        handleRejectCall("Foydalanuvchi javob bermadi");
+      }, 40000);
+      return () => clearTimeout(timer);
+    }
+  }, [callState.status]);
 
   // 6. Xabarni tahrirlash (Edit Message)
   const handleEditMessage = async (messageId, newText) => {
@@ -1243,6 +1406,16 @@ export default function ChatPage() {
     setErrorMsg("");
     cleanupMediaStreams();
 
+    const targetUserId = targetUser?.userId || targetUser?.id;
+    if (!targetUserId) {
+      showToast("Foydalanuvchi aniqlanmadi", "error");
+      return;
+    }
+
+    callTargetUserIdRef.current = targetUserId;
+    callStartTimeRef.current = Date.now();
+    processedSignalIdsRef.current.clear();
+
     try {
       const isVideo = callType === "video";
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -1278,6 +1451,7 @@ export default function ChatPage() {
           sendCallSignal({
             action: "ice_candidate",
             callId: newCallId,
+            targetUserId,
             candidate: event.candidate,
           });
         }
@@ -1298,7 +1472,7 @@ export default function ChatPage() {
       await sendCallSignal({
         action: "call_initiate",
         callId: newCallId,
-        targetUserId: targetUser.id,
+        targetUserId,
         callType,
         sdp: offer,
       });
@@ -1325,6 +1499,12 @@ export default function ChatPage() {
   // 13. WebRTC: Qo'ng'iroqni qabul qilish
   const handleAcceptCall = async () => {
     try {
+      const targetUserId =
+        callState.otherUser?.userId ||
+        callState.otherUser?.id ||
+        callTargetUserIdRef.current;
+      callTargetUserIdRef.current = targetUserId;
+
       const isVideo = callState.callType === "video";
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -1357,6 +1537,7 @@ export default function ChatPage() {
           sendCallSignal({
             action: "ice_candidate",
             callId: callState.callId,
+            targetUserId,
             candidate: event.candidate,
           });
         }
@@ -1370,6 +1551,7 @@ export default function ChatPage() {
       await sendCallSignal({
         action: "call_accept",
         callId: callState.callId,
+        targetUserId,
         sdp: answer,
       });
 
@@ -1380,8 +1562,10 @@ export default function ChatPage() {
     } catch (err) {
       console.error("Accept call error:", err);
       let msg = "Qo‘ng‘iroqni qabul qilib bo‘lmadi.";
-      if (err.name === "NotAllowedError") {
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
         msg = "Kameraga yoki mikrofonga ruxsat berilmadi.";
+      } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+        msg = "Qurilmada kamera yoki mikrofon topilmadi.";
       }
       handleRejectCall(msg);
     }
@@ -1393,6 +1577,7 @@ export default function ChatPage() {
       await sendCallSignal({
         action: "call_reject",
         callId: callState.callId,
+        targetUserId: callTargetUserIdRef.current,
         reason,
       });
     }
@@ -1413,6 +1598,7 @@ export default function ChatPage() {
       await sendCallSignal({
         action: "call_end",
         callId: callState.callId,
+        targetUserId: callTargetUserIdRef.current,
       });
     }
     setCallState({
@@ -1431,17 +1617,105 @@ export default function ChatPage() {
       const audioTrack = localStream.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
+        const newMuted = !audioTrack.enabled;
+        setIsMuted(newMuted);
+        if (callState.callId) {
+          sendCallSignal({
+            action: "media_state",
+            callId: callState.callId,
+            targetUserId: callTargetUserIdRef.current,
+            isMuted: newMuted,
+            isVideoOff,
+          });
+        }
       }
     }
   };
 
-  const handleToggleVideo = () => {
-    if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoOff(!videoTrack.enabled);
+  // Kamerani yoqish/o'chirish (Takroriy yoqish/o'chirish imkoniyati bilan)
+  const handleToggleVideo = async () => {
+    const currentTrack = localStream?.getVideoTracks()[0];
+    const shouldEnable = isVideoOff || !currentTrack || currentTrack.readyState === "ended";
+
+    if (shouldEnable) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+        });
+        const newTrack = stream.getVideoTracks()[0];
+        if (newTrack) {
+          if (localStream) {
+            localStream.getVideoTracks().forEach((t) => {
+              try { t.stop(); } catch (e) {}
+              localStream.removeTrack(t);
+            });
+            localStream.addTrack(newTrack);
+          } else {
+            setLocalStream(stream);
+          }
+
+          // RTCPeerConnection sender ni yangilash
+          if (peerConnectionRef.current) {
+            const senders = peerConnectionRef.current.getSenders();
+            const videoSender = senders.find(
+              (s) => s.track?.kind === "video" || s.kind === "video"
+            );
+            if (videoSender) {
+              await videoSender.replaceTrack(newTrack);
+            } else {
+              peerConnectionRef.current.addTrack(newTrack, localStream || stream);
+            }
+          }
+
+          setIsVideoOff(false);
+          if (callState.callId) {
+            sendCallSignal({
+              action: "media_state",
+              callId: callState.callId,
+              targetUserId: callTargetUserIdRef.current,
+              isVideoOff: false,
+              isMuted,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Video toggle error:", err);
+        let msg = "Kamerani yoqib bo‘lmadi.";
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          msg = "Kameradan foydalanishga ruxsat berilmadi.";
+        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+          msg = "Qurilmada kamera topilmadi.";
+        }
+        showToast(msg, "warning");
+      }
+    } else {
+      if (localStream) {
+        localStream.getVideoTracks().forEach((track) => {
+          track.enabled = false;
+          try { track.stop(); } catch (e) {}
+          localStream.removeTrack(track);
+        });
+      }
+
+      if (peerConnectionRef.current) {
+        const senders = peerConnectionRef.current.getSenders();
+        const videoSender = senders.find(
+          (s) => s.track?.kind === "video" || s.kind === "video"
+        );
+        if (videoSender) {
+          await videoSender.replaceTrack(null);
+        }
+      }
+
+      setIsVideoOff(true);
+      if (callState.callId) {
+        sendCallSignal({
+          action: "media_state",
+          callId: callState.callId,
+          targetUserId: callTargetUserIdRef.current,
+          isVideoOff: true,
+          isMuted,
+        });
       }
     }
   };
@@ -1482,13 +1756,13 @@ export default function ChatPage() {
   // 17. Umumiy xabar jo'natish
   const dispatchMessage = async ({ textBody, type = "text", storageId = null, mediaUrl = null }) => {
     const isPublic = !isGroupChat && activeChat === "public";
-    const recipientId = isGroupChat ? undefined : (isPublic ? "public" : activeChat.id);
+    const targetRecipientId = isGroupChat ? undefined : (isPublic ? "public" : (activeChat?.userId || activeChat?.id || "public"));
     const authorName = currentUser?.displayName || author.trim() || "Anonim";
 
     const { clientTempId, optimisticMsg } = createTempMessage({
       author: authorName,
       senderId: currentUser?.id || null,
-      recipientId: recipientId || "public",
+      recipientId: targetRecipientId || "public",
       textBody,
       type,
       storageId,
@@ -1503,7 +1777,7 @@ export default function ChatPage() {
       type,
       storageId: storageId || undefined,
       mediaUrl: mediaUrl || undefined,
-      recipientId: isPublic ? undefined : activeChat?.id,
+      recipientId: isPublic ? undefined : targetRecipientId,
       groupId: activeGroupId,
       clientTempId,
     };
@@ -1518,7 +1792,7 @@ export default function ChatPage() {
           storageId: msgData.storageId,
           mediaUrl: msgData.mediaUrl,
           senderId: currentUser?.id,
-          recipientId: isGroupChat ? undefined : (isPublic ? "public" : activeChat?.id),
+          recipientId: isGroupChat ? undefined : (isPublic ? "public" : targetRecipientId),
           groupId: activeGroupId,
           replyToId: replyingTo?._id,
           replyToSnapshot: replyingTo
@@ -1804,6 +2078,21 @@ export default function ChatPage() {
       setAuthor(trimmed);
       if (typeof window !== "undefined") {
         localStorage.setItem("chat_username", trimmed);
+        localStorage.setItem("chat_display_name", trimmed);
+      }
+
+      if (currentUser?.id && convexUpdateProfile) {
+        try {
+          await convexUpdateProfile({
+            userId: currentUser.id,
+            displayName: trimmed,
+          });
+          const updatedUser = { ...currentUser, displayName: trimmed };
+          setCurrentUser(updatedUser);
+          localStorage.setItem("chat_user", JSON.stringify(updatedUser));
+        } catch (convexErr) {
+          console.debug("Convex update profile error:", convexErr);
+        }
       }
 
       try {
@@ -1883,7 +2172,7 @@ export default function ChatPage() {
 
       {/* Chap Sidebar (Suhbatlar va Foydalanuvchilar) */}
       <ChatSidebar
-        users={users}
+        users={displaySidebarUsers}
         groupSettings={groupSettings}
         activeChat={activeChat}
         onSelectChat={handleSelectChat}
@@ -2630,11 +2919,12 @@ export default function ChatPage() {
           setActiveMeetingRoomId(res.meetingId);
           return res;
         }}
-        onJoinMeeting={async (meetingId, isAudioOnly) => {
+        onJoinMeeting={async (meetingId, isAudioOnly, guestName) => {
+          const effectiveName = currentUser?.displayName || guestName || author;
           await convexJoinMeeting({
             meetingId,
-            userId: currentUser?.id || "anon",
-            displayName: currentUser?.displayName || author,
+            userId: currentUser?.id || `guest-${Date.now()}`,
+            displayName: effectiveName,
             isAudioOnly,
           });
           setActiveMeetingRoomId(meetingId);
@@ -2699,7 +2989,11 @@ export default function ChatPage() {
           localStorage.removeItem("chat_username");
           localStorage.removeItem("chat_display_name");
           setCurrentUser(null);
-          window.location.reload();
+          setSessionToken(null);
+          setAuthor("Foydalanuvchi");
+          setMessages([]);
+          setIsSettingsModalOpen(false);
+          setIsAuthModalOpen(true);
         }}
         onDeleteAccount={async (password) => {
           if (currentUser?.id && convexDeleteAccount) {

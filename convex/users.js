@@ -272,7 +272,38 @@ export const login = mutation({
   },
 });
 
-// Eski va sodda autentifikatsiya metodi (moslik uchun)
+// Haqiqiy sessiyani tasdiqlash va foydalanuvchi ma'lumotlarini olish
+export const validateSession = query({
+  args: {
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!args.userId) return null;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (!user) return null;
+
+    return {
+      id: user.userId,
+      userId: user.userId,
+      username: user.username,
+      displayName: user.displayName,
+      avatarBg: user.avatarBg,
+      avatarText: user.avatarText,
+      avatarUrl: user.avatarUrl,
+      bio: user.bio,
+      isOnline: user.isOnline,
+      lastSeen: user.lastSeen,
+      privacySettings: user.privacySettings,
+      hasPassword: Boolean(user.passwordHash),
+    };
+  },
+});
+
+// Eski va sodda autentifikatsiya metodi (faqat yangi anonim / mehmonga ruxsat, parollangan akkauntni o'g'irlashni to'sadi)
 export const authenticate = mutation({
   args: {
     username: v.string(),
@@ -284,6 +315,10 @@ export const authenticate = mutation({
       .query("users")
       .withIndex("by_username", (q) => q.eq("username", cleanUsername))
       .first();
+
+    if (existing && existing.passwordHash) {
+      throw new Error("Ushbu akkaunt parollangan. Iltimos, parolingiz bilan tizimga kiring.");
+    }
 
     if (!existing) {
       const name = args.displayName?.trim() || cleanUsername;
