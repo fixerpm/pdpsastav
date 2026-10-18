@@ -8,6 +8,7 @@ export default function MeetingsModal({
   onClose,
   currentUser,
   meeting, // Active meeting object from Convex
+  initialMeetingId,
   onCreateMeeting,
   onJoinMeeting,
   onLeaveMeeting,
@@ -41,6 +42,12 @@ export default function MeetingsModal({
   // Stop all media tracks helper
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
+
+  useEffect(() => {
+    if (initialMeetingId && !joinMeetingId) {
+      setJoinMeetingId(initialMeetingId);
+    }
+  }, [initialMeetingId, joinMeetingId]);
 
   useEffect(() => {
     localStreamRef.current = localStream;
@@ -90,10 +97,11 @@ export default function MeetingsModal({
 
   // Attach local stream to video element
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
+    if (localVideoRef.current && localStream && !isVideoOff) {
       localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
     }
-  }, [localStream, meetingMode]);
+  }, [localStream, isVideoOff, meetingMode]);
 
   // Attach screen stream to video element
   useEffect(() => {
@@ -216,18 +224,9 @@ export default function MeetingsModal({
         });
         const newTrack = stream.getVideoTracks()[0];
         if (newTrack) {
-          if (localStream) {
-            localStream.getVideoTracks().forEach((t) => {
-              try { t.stop(); } catch (e) {}
-              localStream.removeTrack(t);
-            });
-            localStream.addTrack(newTrack);
-          } else {
-            setLocalStream(stream);
-          }
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = localStream || stream;
-          }
+          const audioTrack = localStream?.getAudioTracks()[0];
+          const updatedStream = new MediaStream(audioTrack ? [audioTrack, newTrack] : [newTrack]);
+          setLocalStream(updatedStream);
           setIsVideoOff(false);
           if (activeMeetingId && onUpdateMediaState) {
             onUpdateMediaState(activeMeetingId, { isVideoOff: false });
@@ -247,9 +246,11 @@ export default function MeetingsModal({
       if (localStream) {
         localStream.getVideoTracks().forEach((track) => {
           track.enabled = false;
-          track.stop();
-          localStream.removeTrack(track);
+          try { track.stop(); } catch (e) {}
         });
+        const audioTrack = localStream.getAudioTracks()[0];
+        const updatedStream = audioTrack ? new MediaStream([audioTrack]) : new MediaStream();
+        setLocalStream(updatedStream);
       }
       setIsVideoOff(true);
       if (activeMeetingId && onUpdateMediaState) {

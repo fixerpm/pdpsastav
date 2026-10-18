@@ -8,6 +8,8 @@ export default function CallModal({
   remoteStream,
   isMuted,
   isVideoOff,
+  isRemoteVideoOff = false,
+  isRemoteMuted = false,
   callDuration,
   iceStatus = "connected",
   onAccept,
@@ -23,20 +25,23 @@ export default function CallModal({
 
   // Lokal video oqimini ulash
   useEffect(() => {
-    if (localVideoRef.current && localStream) {
+    if (localVideoRef.current && localStream && !isVideoOff) {
       localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(() => {});
     }
   }, [localStream, callState.status, isVideoOff]);
 
   // Masofaviy video oqimini ulash
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
+    if (remoteVideoRef.current && remoteStream && !isRemoteVideoOff) {
       remoteVideoRef.current.srcObject = remoteStream;
+      remoteVideoRef.current.play().catch(() => {});
     }
     if (remoteAudioRef.current && remoteStream) {
       remoteAudioRef.current.srcObject = remoteStream;
+      remoteAudioRef.current.play().catch(() => {});
     }
-  }, [remoteStream, callState.status]);
+  }, [remoteStream, callState.status, isRemoteVideoOff]);
 
   if (callState.status === "idle" && !callState.error) {
     return null;
@@ -235,11 +240,37 @@ export default function CallModal({
                   ref={remoteVideoRef}
                   autoPlay
                   playsInline
-                  className="w-full h-full object-cover"
+                  className={`w-full h-full object-cover transition-opacity duration-300 ${
+                    isRemoteVideoOff ? "opacity-0 pointer-events-none" : "opacity-100"
+                  }`}
                 />
 
+                {/* Masofaviy kamera o'chirilgan holati */}
+                {isRemoteVideoOff && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/95 gap-4 z-10 animate-fade-in">
+                    <div
+                      className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-tr ${
+                        callState.otherUser?.avatarBg || "from-cyan-500 to-blue-600"
+                      } flex items-center justify-center text-3xl font-extrabold text-white shadow-2xl ring-4 ring-cyan-500/20`}
+                    >
+                      {callState.otherUser?.avatarText ||
+                        callState.otherUser?.displayName?.[0]?.toUpperCase() ||
+                        "U"}
+                    </div>
+                    <div className="text-center space-y-1">
+                      <h4 className="text-base font-bold text-white">
+                        {callState.otherUser?.displayName || "Suhbatdosh"}
+                      </h4>
+                      <p className="text-xs text-zinc-400 flex items-center justify-center gap-1.5 font-medium">
+                        <span className="w-2 h-2 rounded-full bg-rose-500" />
+                        Kamera o‘chirilgan
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Masofaviy video hali kelmagan bo'lsa loading / placeholder */}
-                {!remoteStream && (
+                {!remoteStream && !isRemoteVideoOff && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-950/90 text-zinc-400 gap-3">
                     <div className="w-10 h-10 border-2 border-cyan-400/20 border-t-cyan-400 rounded-full animate-spin" />
                     <p className="text-xs">Suhbatdosh videosi kutilmoqda...</p>

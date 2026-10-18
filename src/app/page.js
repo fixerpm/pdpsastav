@@ -198,6 +198,11 @@ export default function ChatPage() {
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [iceStatus, setIceStatus] = useState("idle");
+  const [remoteMediaState, setRemoteMediaState] = useState({
+    isVideoOff: false,
+    isMuted: false,
+  });
+  const videoSenderRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const callTimerRef = useRef(null);
   const callTargetUserIdRef = useRef(null);
@@ -534,6 +539,8 @@ export default function ChatPage() {
     setCallDuration(0);
     setIsMuted(false);
     setIsVideoOff(false);
+    setRemoteMediaState({ isVideoOff: false, isMuted: false });
+    videoSenderRef.current = null;
     setIceStatus("idle");
   }, [localStream, remoteStream]);
 
@@ -1054,6 +1061,10 @@ export default function ChatPage() {
           cleanupMediaStreams();
         } else if (signal.type === "media_state") {
           console.debug("Remote media state changed:", payload);
+          setRemoteMediaState({
+            isVideoOff: Boolean(payload.isVideoOff),
+            isMuted: Boolean(payload.isMuted),
+          });
         }
       } catch (e) {
         console.debug("Signal parse error:", e);
@@ -1463,13 +1474,22 @@ export default function ChatPage() {
         }
       };
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      stream.getTracks().forEach((track) => {
+        const sender = pc.addTrack(track, stream);
+        if (track.kind === "video") {
+          videoSenderRef.current = sender;
+        }
+      });
 
       const remote = new MediaStream();
       setRemoteStream(remote);
 
       pc.ontrack = (event) => {
-        event.streams[0]?.getTracks().forEach((t) => remote.addTrack(t));
+        if (event.track) {
+          remote.addTrack(event.track);
+        } else if (event.streams[0]) {
+          event.streams[0].getTracks().forEach((t) => remote.addTrack(t));
+        }
       };
 
       const newCallId = "call-" + Date.now();
@@ -1551,13 +1571,22 @@ export default function ChatPage() {
         }
       };
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      stream.getTracks().forEach((track) => {
+        const sender = pc.addTrack(track, stream);
+        if (track.kind === "video") {
+          videoSenderRef.current = sender;
+        }
+      });
 
       const remote = new MediaStream();
       setRemoteStream(remote);
 
       pc.ontrack = (event) => {
-        event.streams[0]?.getTracks().forEach((t) => remote.addTrack(t));
+        if (event.track) {
+          remote.addTrack(event.track);
+        } else if (event.streams[0]) {
+          event.streams[0].getTracks().forEach((t) => remote.addTrack(t));
+        }
       };
 
       pc.onicecandidate = (event) => {
@@ -1672,26 +1701,30 @@ export default function ChatPage() {
         });
         const newTrack = stream.getVideoTracks()[0];
         if (newTrack) {
-          if (localStream) {
-            localStream.getVideoTracks().forEach((t) => {
-              try { t.stop(); } catch (e) {}
-              localStream.removeTrack(t);
-            });
-            localStream.addTrack(newTrack);
-          } else {
-            setLocalStream(stream);
-          }
+          const audioTrack = localStream?.getAudioTracks()[0];
+          const updatedStream = new MediaStream(audioTrack ? [audioTrack, newTrack] : [newTrack]);
+          setLocalStream(updatedStream);
 
           // RTCPeerConnection sender ni yangilash
           if (peerConnectionRef.current) {
-            const senders = peerConnectionRef.current.getSenders();
-            const videoSender = senders.find(
-              (s) => s.track?.kind === "video" || s.kind === "video"
-            );
+            let videoSender = videoSenderRef.current;
+            if (!videoSender && peerConnectionRef.current.getTransceivers) {
+              const transceivers = peerConnectionRef.current.getTransceivers();
+              const vt = transceivers.find(
+                (t) => t.receiver?.track?.kind === "video" || t.sender?.track?.kind === "video"
+              );
+              if (vt) videoSender = vt.sender;
+            }
+            if (!videoSender) {
+              videoSender = peerConnectionRef.current.getSenders().find(
+                (s) => s.track?.kind === "video"
+              );
+            }
             if (videoSender) {
               await videoSender.replaceTrack(newTrack);
+              videoSenderRef.current = videoSender;
             } else {
-              peerConnectionRef.current.addTrack(newTrack, localStream || stream);
+              peerConnectionRef.current.addTrack(newTrack, updatedStream);
             }
           }
 
@@ -1721,17 +1754,29 @@ export default function ChatPage() {
         localStream.getVideoTracks().forEach((track) => {
           track.enabled = false;
           try { track.stop(); } catch (e) {}
-          localStream.removeTrack(track);
         });
+        const audioTrack = localStream.getAudioTracks()[0];
+        const updatedStream = audioTrack ? new MediaStream([audioTrack]) : new MediaStream();
+        setLocalStream(updatedStream);
       }
 
       if (peerConnectionRef.current) {
-        const senders = peerConnectionRef.current.getSenders();
-        const videoSender = senders.find(
-          (s) => s.track?.kind === "video" || s.kind === "video"
-        );
+        let videoSender = videoSenderRef.current;
+        if (!videoSender && peerConnectionRef.current.getTransceivers) {
+          const transceivers = peerConnectionRef.current.getTransceivers();
+          const vt = transceivers.find(
+            (t) => t.receiver?.track?.kind === "video" || t.sender?.track?.kind === "video"
+          );
+          if (vt) videoSender = vt.sender;
+        }
+        if (!videoSender) {
+          videoSender = peerConnectionRef.current.getSenders().find(
+            (s) => s.track?.kind === "video"
+          );
+        }
         if (videoSender) {
           await videoSender.replaceTrack(null);
+          videoSenderRef.current = videoSender;
         }
       }
 
@@ -2741,6 +2786,8 @@ export default function ChatPage() {
         remoteStream={remoteStream}
         isMuted={isMuted}
         isVideoOff={isVideoOff}
+        isRemoteVideoOff={remoteMediaState.isVideoOff}
+        isRemoteMuted={remoteMediaState.isMuted}
         callDuration={callDuration}
         iceStatus={iceStatus}
         onAccept={handleAcceptCall}
@@ -2944,9 +2991,13 @@ export default function ChatPage() {
       {/* Uchrashuvlar Modali (Google Meet uslubida) */}
       <MeetingsModal
         isOpen={isMeetingsModalOpen}
-        onClose={() => setIsMeetingsModalOpen(false)}
+        onClose={() => {
+          setIsMeetingsModalOpen(false);
+          setActiveMeetingRoomId(null);
+        }}
         currentUser={currentUser}
         meeting={convexCurrentMeeting}
+        initialMeetingId={activeMeetingRoomId}
         currentGroupId={activeGroupId}
         onCreateMeeting={async ({ title, isAudioOnly, groupId }) => {
           const res = await convexCreateMeeting({
