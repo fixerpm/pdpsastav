@@ -43,12 +43,16 @@ export const list = query({
             .collect()
         : [];
 
-      const combined = [...list1, ...list2].filter(
-        (m) =>
-          !m.groupId &&
-          ((m.senderId === args.viewerId && m.recipientId === args.recipientId) ||
-            (m.senderId === args.recipientId && m.recipientId === args.viewerId))
-      );
+      const combined = [...list1, ...list2].filter((m) => {
+        if (m.groupId) return false;
+        if (!args.viewerId) {
+          return m.recipientId === args.recipientId || m.senderId === args.recipientId;
+        }
+        return (
+          (m.senderId === args.viewerId && m.recipientId === args.recipientId) ||
+          (m.senderId === args.recipientId && m.recipientId === args.viewerId)
+        );
+      });
 
       const seen = new Set();
       const unique = [];

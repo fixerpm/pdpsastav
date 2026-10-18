@@ -54,12 +54,18 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, convexRegist
       try {
         let userResult;
         if (convexRegister) {
-          const res = await convexRegister({
-            username: cleanUsername,
-            displayName: displayName.trim(),
-            password,
-            bio: bio.trim() || undefined,
-          });
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Server javob berish vaqti tugadi. Qayta urinib ko‘ring.")), 8000)
+          );
+          const res = await Promise.race([
+            convexRegister({
+              username: cleanUsername,
+              displayName: displayName.trim(),
+              password,
+              bio: bio.trim() || undefined,
+            }),
+            timeoutPromise,
+          ]);
           userResult = res.user;
         } else {
           // Fallback to local API
@@ -98,10 +104,16 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, convexRegist
       try {
         let userResult;
         if (convexLogin) {
-          const res = await convexLogin({
-            username: cleanUsername,
-            password,
-          });
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Server javob berish vaqti tugadi. Qayta urinib ko‘ring.")), 8000)
+          );
+          const res = await Promise.race([
+            convexLogin({
+              username: cleanUsername,
+              password,
+            }),
+            timeoutPromise,
+          ]);
           userResult = res.user;
         } else {
           const res = await fetch("/api/chat/auth", {

@@ -275,6 +275,14 @@ export default function ChatPage() {
   const rawDisplayMessages = isConvexReady && Array.isArray(convexMessages) ? convexMessages : messages;
   const isLoaded = initialLoaded || isConvexReady;
 
+  // Yuklanish holatini hech qachon cheksiz qolib ketmasligini ta'minlash (Watchdog timer)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setInitialLoaded(true);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const displayMessages = rawDisplayMessages.filter((m) => {
     if (!chatSearchText.trim()) return true;
     return m.body?.toLowerCase().includes(chatSearchText.toLowerCase());
@@ -282,38 +290,64 @@ export default function ChatPage() {
 
   const pinnedMessage = rawDisplayMessages.find((m) => m.isPinned);
 
-  // 1. Dastlabki autentifikatsiya
+  // 1. Dastlabki autentifikatsiya va sessiyani tiklash
   useEffect(() => {
     async function initAuth() {
       if (typeof window === "undefined") return;
 
-      let savedName = localStorage.getItem("chat_username");
-      let savedToken = localStorage.getItem("chat_token");
+      let savedUser = null;
+      try {
+        const raw = localStorage.getItem("chat_user");
+        if (raw) savedUser = JSON.parse(raw);
+      } catch (e) {}
 
+      let savedName = localStorage.getItem("chat_username") || savedUser?.username || "";
+      let savedToken = localStorage.getItem("chat_token") || "";
+
+      // 1. Agar oldin ro'yxatdan o'tgan yoki kirgan haqiqiy foydalanuvchi bo'lsa
+      if (savedUser && savedUser.id && !savedUser.isAnonymous) {
+        setCurrentUser(savedUser);
+        setSessionToken(savedToken || `tok-${savedUser.id}`);
+        setAuthor(savedUser.displayName || savedUser.username);
+
+        // Convex users jadvali bilan sinxronlash
+        if (isConvexConfigured) {
+          try {
+            const convexUserRes = await convex.mutation(api.users.authenticate, {
+              username: savedUser.username,
+              displayName: savedUser.displayName || savedUser.username,
+            });
+            if (convexUserRes?.user) {
+              const merged = { ...savedUser, ...convexUserRes.user };
+              setCurrentUser(merged);
+              localStorage.setItem("chat_user", JSON.stringify(merged));
+            }
+          } catch (convexSyncErr) {
+            console.debug("Convex user sync:", convexSyncErr);
+          }
+        }
+        return;
+      }
+
+      // 2. Aks holda mehmon (guest) sifatida tayyorlash
       if (!savedName) {
         const randomNum = Math.floor(1000 + Math.random() * 9000);
-        savedName = `Foydalanuvchi_${randomNum}`;
+        savedName = `Mehmon_${randomNum}`;
         localStorage.setItem("chat_username", savedName);
       }
       setAuthor(savedName);
 
       try {
-        let isValid = false;
-        if (savedToken) {
-          const checkRes = await fetch("/api/chat/auth", {
-            headers: { Authorization: `Bearer ${savedToken}` },
-          });
-          if (checkRes.ok) {
-            const data = await checkRes.json();
-            if (data.authenticated && data.user) {
-              setCurrentUser(data.user);
-              setSessionToken(savedToken);
-              isValid = true;
-            }
-          }
-        }
+        let guestUser = {
+          id: `guest-${Math.random().toString(36).slice(2, 9)}`,
+          username: savedName,
+          displayName: savedName,
+          isAnonymous: true,
+        };
+        const guestToken = savedToken || `tok-guest-${Date.now()}`;
 
-        if (!isValid) {
+        // Local REST auth
+        try {
           const authRes = await fetch("/api/chat/auth", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -324,32 +358,39 @@ export default function ChatPage() {
           });
           if (authRes.ok) {
             const authData = await authRes.json();
-            setCurrentUser(authData.user);
-            setSessionToken(authData.token);
-            localStorage.setItem("chat_token", authData.token);
-            localStorage.setItem("chat_user", JSON.stringify(authData.user));
+            if (authData.user) {
+              guestUser = { ...authData.user, isAnonymous: true };
+            }
           }
+        } catch (restErr) {
+          console.debug("REST guest auth:", restErr);
         }
 
-        // Convex users jadvali bilan sinxronizatsiya (Owner va kontaktlar to'g'ri ishlashi uchun)
-        if (isConvexConfigured && savedName) {
+        // Convex guest sync
+        if (isConvexConfigured) {
           try {
             const convexUserRes = await convex.mutation(api.users.authenticate, {
               username: savedName,
               displayName: savedName,
             });
             if (convexUserRes?.user) {
-              setCurrentUser((prev) => ({
-                ...(prev || {}),
+              guestUser = {
+                ...guestUser,
                 ...convexUserRes.user,
                 id: convexUserRes.user.id,
                 userId: convexUserRes.user.id,
-              }));
+                isAnonymous: true,
+              };
             }
           } catch (convexSyncErr) {
-            console.debug("Convex user sync:", convexSyncErr);
+            console.debug("Convex guest sync:", convexSyncErr);
           }
         }
+
+        setCurrentUser(guestUser);
+        setSessionToken(guestToken);
+        localStorage.setItem("chat_token", guestToken);
+        localStorage.setItem("chat_user", JSON.stringify(guestUser));
       } catch (err) {
         console.error("Auth init error:", err);
       }
@@ -455,24 +496,45 @@ export default function ChatPage() {
     setIceStatus("idle");
   }, [localStream, remoteStream]);
 
-  // WebRTC Signal yuborish
+  // WebRTC Signal yuborish (REST + Convex dual signaling)
   const sendCallSignal = useCallback(
     async (payload) => {
-      if (!sessionToken) return;
+      // 1. Agar Convex faol bo'lsa va meetingSignals/notifications mavjud bo'lsa
+      if (isConvexConfigured && payload.targetUserId && payload.action === "call_initiate") {
+        try {
+          await convex.mutation(api.notifications.sendCallNotification, {
+            recipientId: payload.targetUserId,
+            callerId: currentUser?.id || "anon",
+            callerName: currentUser?.displayName || author,
+            callerAvatarBg: currentUser?.avatarBg,
+            callId: payload.callId,
+            callType: payload.callType || "video",
+            sdp: payload.sdp,
+          });
+        } catch (convexCallErr) {
+          console.debug("Convex call notification fallback:", convexCallErr);
+        }
+      }
+
+      // 2. Local REST API orqali uzatish
       try {
         await fetch("/api/chat/call", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${sessionToken}`,
+            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
           },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            ...payload,
+            callerId: currentUser?.id,
+            callerName: currentUser?.displayName || author,
+          }),
         });
       } catch (e) {
         console.error("Signal yuborishda xatolik:", e);
       }
     },
-    [sessionToken]
+    [sessionToken, currentUser, author, isConvexConfigured, convex]
   );
 
   // 5. SSE Real-Time oqimiga ulanish
@@ -782,6 +844,41 @@ export default function ChatPage() {
       if (retryTimer) clearTimeout(retryTimer);
     };
   }, [currentUser?.id, sessionToken, activeChat, cleanupMediaStreams]);
+
+  // Convex orqali real-time kiruvchi qo'ng'iroqni aniqlash (Serverless-proof)
+  useEffect(() => {
+    if (!convexNotifications || !Array.isArray(convexNotifications)) return;
+    const incomingCallNotif = convexNotifications.find((n) => n.type === "call" && !n.isRead);
+    if (incomingCallNotif && callState.status === "idle") {
+      try {
+        const callData = JSON.parse(incomingCallNotif.data || "{}");
+        if (callData.callId && callData.sdp) {
+          setTimeout(() => {
+            setCallState({
+              status: "incoming",
+              callId: callData.callId,
+              callType: callData.callType || "video",
+              otherUser: {
+                id: callData.callerId,
+                displayName: callData.callerName,
+                avatarBg: callData.callerAvatarBg,
+              },
+              incomingOfferSdp: callData.sdp,
+              error: null,
+            });
+          }, 0);
+          if (currentUser?.id) {
+            convexMarkNotificationAsRead({
+              notificationId: incomingCallNotif._id,
+              userId: currentUser.id,
+            }).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.debug("Parse call notif error:", err);
+      }
+    }
+  }, [convexNotifications, callState.status, currentUser?.id, convexMarkNotificationAsRead]);
 
   // 6. Xabarni tahrirlash (Edit Message)
   const handleEditMessage = async (messageId, newText) => {
@@ -2599,6 +2696,9 @@ export default function ChatPage() {
         onLogout={() => {
           localStorage.removeItem("chat_token");
           localStorage.removeItem("chat_user");
+          localStorage.removeItem("chat_username");
+          localStorage.removeItem("chat_display_name");
+          setCurrentUser(null);
           window.location.reload();
         }}
         onDeleteAccount={async (password) => {
