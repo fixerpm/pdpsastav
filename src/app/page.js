@@ -285,6 +285,7 @@ export default function ChatPage() {
       ? {
           meetingId: callState.callId,
           targetId: currentUser.id,
+          sinceTimestamp: callStartTimeRef.current || 0,
         }
       : "skip"
   );

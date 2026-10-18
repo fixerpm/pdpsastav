@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/deploy-convex-if-ci.js && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "node scripts/test-all-modules.js",
