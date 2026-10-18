@@ -14,6 +14,7 @@ import AuthModal from "@/components/AuthModal";
 import ContactsModal from "@/components/ContactsModal";
 import GroupsModal from "@/components/GroupsModal";
 import MeetingsModal from "@/components/MeetingsModal";
+import MeetErrorBoundary from "@/components/MeetErrorBoundary";
 import SettingsModal from "@/components/SettingsModal";
 import NotificationDropdown from "@/components/NotificationDropdown";
 import { BRAND_CONFIG } from "@/config/branding";
@@ -2998,59 +2999,70 @@ export default function ChatPage() {
       />
 
       {/* Uchrashuvlar Modali (Google Meet uslubida) */}
-      <MeetingsModal
-        isOpen={isMeetingsModalOpen}
+      <MeetErrorBoundary
         onClose={() => {
           setIsMeetingsModalOpen(false);
           setActiveMeetingRoomId(null);
+          setActiveView("chats");
         }}
-        currentUser={currentUser}
-        meeting={convexCurrentMeeting}
-        initialMeetingId={activeMeetingRoomId}
-        currentGroupId={activeGroupId}
-        onCreateMeeting={async ({ title, isAudioOnly, groupId }) => {
-          const res = await convexCreateMeeting({
-            title,
-            hostUserId: currentUser?.id || "anon",
-            hostName: currentUser?.displayName || author,
-            groupId: groupId || activeGroupId || undefined,
-            isAudioOnly,
-          });
-          setActiveMeetingRoomId(res.meetingId);
-          return res;
-        }}
-        onJoinMeeting={async (meetingId, isAudioOnly, guestName) => {
-          const effectiveName = currentUser?.displayName || guestName || author;
-          await convexJoinMeeting({
-            meetingId,
-            userId: currentUser?.id || `guest-${Date.now()}`,
-            displayName: effectiveName,
-            isAudioOnly,
-          });
-          setActiveMeetingRoomId(meetingId);
-        }}
-        onLeaveMeeting={async (meetingId) => {
-          if (currentUser?.id) {
-            await convexLeaveMeeting({ meetingId, userId: currentUser.id });
-          }
-          setActiveMeetingRoomId(null);
-        }}
-        onEndMeeting={async (meetingId) => {
-          if (currentUser?.id) {
-            await convexEndMeeting({ meetingId, hostUserId: currentUser.id });
-          }
-          setActiveMeetingRoomId(null);
-        }}
-        onUpdateMediaState={async (meetingId, states) => {
-          if (currentUser?.id) {
-            await convexUpdateMeetingMediaState({
-              meetingId,
-              userId: currentUser.id,
-              ...states,
+      >
+        <MeetingsModal
+          isOpen={isMeetingsModalOpen}
+          onClose={() => {
+            setIsMeetingsModalOpen(false);
+            setActiveMeetingRoomId(null);
+            setActiveView("chats");
+          }}
+          currentUser={currentUser}
+          meeting={convexCurrentMeeting}
+          initialMeetingId={activeMeetingRoomId}
+          currentGroupId={activeGroupId}
+          onCreateMeeting={async ({ title, isAudioOnly, groupId }) => {
+            const res = await convexCreateMeeting({
+              title,
+              hostUserId: currentUser?.id || "anon",
+              hostName: currentUser?.displayName || author,
+              groupId: groupId || activeGroupId || undefined,
+              isAudioOnly,
             });
-          }
-        }}
-      />
+            setActiveMeetingRoomId(res.meetingId);
+            return res;
+          }}
+          onJoinMeeting={async (meetingId, isAudioOnly, guestName) => {
+            const effectiveName = currentUser?.displayName || guestName || author;
+            await convexJoinMeeting({
+              meetingId,
+              userId: currentUser?.id || `guest-${Date.now()}`,
+              displayName: effectiveName,
+              isAudioOnly,
+            });
+            setActiveMeetingRoomId(meetingId);
+          }}
+          onLeaveMeeting={async (meetingId) => {
+            if (currentUser?.id) {
+              await convexLeaveMeeting({ meetingId, userId: currentUser.id });
+            }
+            setActiveMeetingRoomId(null);
+            setActiveView("chats");
+          }}
+          onEndMeeting={async (meetingId) => {
+            if (currentUser?.id) {
+              await convexEndMeeting({ meetingId, hostUserId: currentUser.id });
+            }
+            setActiveMeetingRoomId(null);
+            setActiveView("chats");
+          }}
+          onUpdateMediaState={async (meetingId, states) => {
+            if (currentUser?.id) {
+              await convexUpdateMeetingMediaState({
+                meetingId,
+                userId: currentUser.id,
+                ...states,
+              });
+            }
+          }}
+        />
+      </MeetErrorBoundary>
 
       {/* Sozlamalar Modali */}
       <SettingsModal

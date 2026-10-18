@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { BRAND_CONFIG } from "@/config/branding";
 import { parseErrorMessage } from "@/lib/error-parser";
+import MeetErrorBoundary from "@/components/MeetErrorBoundary";
 
 function getIceServers() {
   const servers = [
@@ -120,7 +121,21 @@ export default function MeetingsModal({
   const peersRef = useRef({});
   const pendingCandidatesRef = useRef({});
   const processedSignalIdsRef = useRef(new Set());
-  const guestUserIdRef = useRef(null);
+
+  // Stable User ID with safe lazy state (no ref mutation during render)
+  const [guestUserId] = useState(() => {
+    if (typeof window === "undefined") return `guest-${Date.now()}`;
+    try {
+      let id = localStorage.getItem("meet_guest_id");
+      if (!id) {
+        id = `guest-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        localStorage.setItem("meet_guest_id", id);
+      }
+      return id;
+    } catch {
+      return `guest-${Date.now()}`;
+    }
+  });
 
   const localVideoRef = useRef(null);
   const screenVideoRef = useRef(null);
@@ -128,16 +143,7 @@ export default function MeetingsModal({
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
 
-  // Stable User ID
-  if (!guestUserIdRef.current) {
-    if (typeof window !== "undefined") {
-      guestUserIdRef.current = localStorage.getItem("meet_guest_id") || `guest-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
-      try { localStorage.setItem("meet_guest_id", guestUserIdRef.current); } catch (e) {}
-    } else {
-      guestUserIdRef.current = `guest-${Date.now()}`;
-    }
-  }
-  const myUserId = currentUser?.id || guestUserIdRef.current;
+  const myUserId = currentUser?.id || guestUserId;
 
   // Convex mutations va queries
   const sendSignalMutation = useMutation(api.meetings.sendSignal);
@@ -402,8 +408,13 @@ export default function MeetingsModal({
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Start media devices
+  // Start media devices safely with explicit feature support checks
   const initUserMedia = async (audioOnly = false) => {
+    if (typeof navigator === "undefined" || !navigator?.mediaDevices?.getUserMedia) {
+      setFeedback("Brauzeringizda kamera va mikrofondan foydalanish qo‘llab-quvvatlanmaydi.");
+      setIsVideoOff(true);
+      return null;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
@@ -417,6 +428,7 @@ export default function MeetingsModal({
       console.warn("Media devices error:", err);
       setFeedback("Kamera ruxsati berilmadi. Faqat audio rejimida davom etilmoqda.");
       try {
+        if (!navigator?.mediaDevices?.getUserMedia) return null;
         const audioOnlyStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setLocalStream(audioOnlyStream);
         setIsVideoOff(true);
@@ -495,6 +507,10 @@ export default function MeetingsModal({
     const shouldEnable = isVideoOff || !currentTrack || currentTrack.readyState === "ended";
 
     if (shouldEnable) {
+      if (typeof navigator === "undefined" || !navigator?.mediaDevices?.getUserMedia) {
+        setFeedback("Kameradan foydalanish imkoni mavjud emas.");
+        return;
+      }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -553,6 +569,10 @@ export default function MeetingsModal({
   // Toggle Screen Sharing
   const toggleScreenShare = async () => {
     if (!isScreenSharing) {
+      if (typeof navigator === "undefined" || !navigator?.mediaDevices?.getDisplayMedia) {
+        setFeedback("Brauzeringizda ekran ulashish qo‘llab-quvvatlanmaydi.");
+        return;
+      }
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({
           video: true,
@@ -680,17 +700,19 @@ export default function MeetingsModal({
     }
   };
 
-  const participants = meeting?.participants || [
-    {
-      userId: myUserId,
-      displayName: currentUser?.displayName || "Siz",
-      isMuted,
-      isVideoOff,
-      isScreenSharing,
-    },
-  ];
+  const participants = Array.isArray(meeting?.participants) && meeting.participants.length > 0
+    ? meeting.participants
+    : [
+        {
+          userId: myUserId,
+          displayName: currentUser?.displayName || guestDisplayName.trim() || "Siz",
+          isMuted,
+          isVideoOff,
+          isScreenSharing,
+        },
+      ];
 
-  const isHost = meeting?.hostUserId === currentUser?.id;
+  const isHost = Boolean(currentUser?.id && meeting?.hostUserId && meeting.hostUserId === currentUser.id);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/95 backdrop-blur-xl animate-fade-in">
@@ -877,7 +899,7 @@ export default function MeetingsModal({
 
                   <button
                     type="submit"
-                    disabled={!joinMeetingId.trim() || isJoiningMeeting}
+                    disabled={!joinMeetingId?.trim?.() || isJoiningMeeting}
                     className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2"
                   >
                     {isJoiningMeeting && (
