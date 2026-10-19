@@ -243,12 +243,14 @@ export default function ContactsModal({
               {contacts.length === 0 ? (
                 <div className="text-center py-12 text-zinc-500 text-xs">
                   <p className="text-2xl mb-2">📭</p>
-                  <p>Hozircha kontaktlaringiz mavjud emas.</p>
+                  <p className="font-semibold text-zinc-300">Hozircha kontaktlaringiz yo‘q</p>
+                  <p className="text-[11px] text-zinc-500 mt-1">Yangi do‘stlar va hamkasblaringizni topib qo‘shing</p>
                   <button
                     onClick={() => setActiveTab("find")}
-                    className="mt-3 px-3.5 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-xl font-bold cursor-pointer transition"
+                    className="mt-3.5 px-4 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-xl font-bold cursor-pointer transition inline-flex items-center gap-1.5"
                   >
-                    Foydalanuvchilarni qidirish
+                    <span>➕</span>
+                    <span>Kontakt qo‘shish</span>
                   </button>
                 </div>
               ) : (

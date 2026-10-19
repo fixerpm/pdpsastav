@@ -11,6 +11,13 @@ const AVATAR_COLORS = [
   "from-indigo-500 to-blue-700",
 ];
 
+function resolveOnlineStatus(user) {
+  if (!user || !user.isOnline) return false;
+  if (!user.lastSeen) return false;
+  const diff = Date.now() - new Date(user.lastSeen).getTime();
+  return diff < 150000;
+}
+
 // Foydalanuvchilar ro'yxatini olish
 export const list = query({
   args: {},
@@ -24,7 +31,7 @@ export const list = query({
       avatarText: u.avatarText,
       avatarUrl: u.avatarUrl,
       bio: u.bio,
-      isOnline: u.isOnline,
+      isOnline: resolveOnlineStatus(u),
       lastSeen: u.lastSeen,
     }));
   },
@@ -97,7 +104,7 @@ export const search = query({
           avatarText: u.avatarText,
           avatarUrl: u.avatarUrl,
           bio: u.bio,
-          isOnline: u.isOnline,
+          isOnline: resolveOnlineStatus(u),
           lastSeen: u.privacySettings?.showLastSeen === "nobody" ? null : u.lastSeen,
           contactStatus,
           requestId,
@@ -445,6 +452,27 @@ export const setOnlineStatus = mutation({
     if (user) {
       await ctx.db.patch(user._id, {
         isOnline: args.isOnline,
+        lastSeen: new Date().toISOString(),
+      });
+    }
+    return { success: true };
+  },
+});
+
+// Foydalanuvchi faolligini yangilash (Heartbeat)
+export const heartbeat = mutation({
+  args: {
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (user) {
+      await ctx.db.patch(user._id, {
+        isOnline: true,
         lastSeen: new Date().toISOString(),
       });
     }

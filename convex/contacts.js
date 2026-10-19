@@ -1,6 +1,13 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
+function resolveOnlineStatus(user) {
+  if (!user || !user.isOnline) return false;
+  if (!user.lastSeen) return false;
+  const diff = Date.now() - new Date(user.lastSeen).getTime();
+  return diff < 150000;
+}
+
 // Foydalanuvchining kontaktlarini real-time olish
 export const listContacts = query({
   args: {
@@ -36,7 +43,7 @@ export const listContacts = query({
           avatarText: u.avatarText,
           avatarUrl: u.avatarUrl,
           bio: u.bio,
-          isOnline: u.isOnline,
+          isOnline: resolveOnlineStatus(u),
           lastSeen: u.lastSeen,
           isBlocked: entry.isBlocked || false,
           customNickname: entry.customNickname,

@@ -108,16 +108,16 @@ export default function ChatPage() {
     }
   });
   const [author, setAuthor] = useState(() => {
-    if (typeof window === "undefined") return "Foydalanuvchi";
+    if (typeof window === "undefined") return "";
     try {
       const raw = localStorage.getItem("chat_user");
       if (raw) {
         const u = JSON.parse(raw);
-        if (u) return u.displayName || u.username || "Foydalanuvchi";
+        if (u) return u.displayName || u.username || "";
       }
-      return localStorage.getItem("chat_display_name") || localStorage.getItem("chat_username") || "Foydalanuvchi";
+      return localStorage.getItem("chat_display_name") || localStorage.getItem("chat_username") || "";
     } catch (e) {
-      return "Foydalanuvchi";
+      return "";
     }
   });
   const [isEditingName, setIsEditingName] = useState(false);
@@ -209,6 +209,7 @@ export default function ChatPage() {
   const callTimerRef = useRef(null);
   const callTargetUserIdRef = useRef(null);
   const callStartTimeRef = useRef(0);
+  const [callStartTime, setCallStartTime] = useState(0);
   const processedSignalIdsRef = useRef(new Set());
 
   // Modallar va Navigatsiya
@@ -271,6 +272,7 @@ export default function ChatPage() {
   const convexSetGroupTitle = useMutation(api.conversations.setGroupTitle);
   const convexArchive = useMutation(api.conversations.archive);
   const convexClearHistory = useMutation(api.conversations.clearHistory);
+  const convexDeleteChat = useMutation(api.conversations.deleteChat);
 
   // Messages: Reactions & Pin
   const convexReact = useMutation(api.messages.react);
@@ -283,6 +285,14 @@ export default function ChatPage() {
   const convexUpdateProfile = useMutation(api.users.updateProfile);
   const convexChangePassword = useMutation(api.users.changePassword);
   const convexDeleteAccount = useMutation(api.users.deleteAccount);
+  const convexHeartbeat = useMutation(api.users.heartbeat);
+  const convexSetOnlineStatus = useMutation(api.users.setOnlineStatus);
+
+  // Conversations (Haqiqiy suhbatlar)
+  const convexConversations = useQuery(
+    api.conversations.listConversations,
+    currentUser?.id ? { userId: currentUser.id } : "skip"
+  );
 
   // Contacts
   const convexContacts = useQuery(
@@ -327,7 +337,7 @@ export default function ChatPage() {
       ? {
           meetingId: callState.callId,
           targetId: currentUser.id,
-          sinceTimestamp: callStartTimeRef.current || 0,
+          sinceTimestamp: callStartTime || 0,
         }
       : "skip"
   );
@@ -349,23 +359,70 @@ export default function ChatPage() {
   const rawDisplayMessages = isConvexReady && Array.isArray(convexMessages) ? convexMessages : messages;
   const isLoaded = initialLoaded || isConvexReady;
 
-  // Sidebar foydalanuvchilarini Convex va kontaktlar orqali sinxronlash
-  const displaySidebarUsers =
-    isConvexConfigured && Array.isArray(convexAllUsers)
-      ? convexAllUsers
-          .filter((u) => u.id !== currentUser?.id)
-          .map((u) => {
-            const contact = Array.isArray(convexContacts)
-              ? convexContacts.find((c) => c.id === u.id || c.userId === u.id)
-              : null;
-            return {
-              ...u,
-              displayName: contact?.displayName || u.displayName || u.username,
-              customNickname: contact?.customNickname || null,
-              isContact: Boolean(contact),
-            };
-          })
-      : users;
+  // Real presence & heartbeat effect
+  useEffect(() => {
+    if (!currentUser?.id || !isConvexConfigured) return;
+
+    convexSetOnlineStatus({ userId: currentUser.id, isOnline: true }).catch(() => {});
+
+    const heartbeatInterval = setInterval(() => {
+      convexHeartbeat({ userId: currentUser.id }).catch(() => {});
+    }, 45000);
+
+    const handleBeforeUnload = () => {
+      convexSetOnlineStatus({ userId: currentUser.id, isOnline: false }).catch(() => {});
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      clearInterval(heartbeatInterval);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [currentUser?.id, isConvexConfigured, convexHeartbeat, convexSetOnlineStatus]);
+
+  // Sidebar suhbatlar ro'yxati: Faqat haqiqiy suhbatlar ko'rsatiladi (begona ro'yxatdan o'tganlar chiqmaydi)
+  const displaySidebarConversations = (() => {
+    let list = [];
+    if (isConvexConfigured && Array.isArray(convexConversations)) {
+      list = [...convexConversations];
+    } else if (Array.isArray(users)) {
+      list = [...users];
+    }
+
+    // Agar foydalanuvchi kontaktlar oynasidan biror odam bilan suhbatni ochgan bo'lsa (lekin hali xabar yozmagan bo'lsa),
+    // uni ro'yxatning tepasida vaqtinchalik qoralama sifatida ko'rsatamiz
+    if (
+      activeChat &&
+      activeChat !== "public" &&
+      activeChat.type !== "group" &&
+      !activeChat.groupId
+    ) {
+      const activeId = activeChat.userId || activeChat.id;
+      const alreadyInList = list.some((c) => c.id === activeId || c.userId === activeId);
+      if (!alreadyInList && activeId && activeId !== currentUser?.id) {
+        list.unshift({
+          id: activeId,
+          userId: activeId,
+          username: activeChat.username || "",
+          displayName: activeChat.displayName || activeChat.username || "Suhbat",
+          originalDisplayName: activeChat.originalDisplayName || activeChat.displayName,
+          avatarBg: activeChat.avatarBg || "from-cyan-500 to-blue-600",
+          avatarText: activeChat.avatarText || activeChat.displayName?.[0]?.toUpperCase() || "U",
+          avatarUrl: activeChat.avatarUrl,
+          isOnline: Boolean(activeChat.isOnline),
+          isContact: Boolean(activeChat.isContact),
+          isArchived: false,
+          isHidden: false,
+          unreadCount: 0,
+          lastMessage: null,
+          isDraft: true,
+        });
+      }
+    }
+
+    return list.filter((u) => u.id !== currentUser?.id && u.userId !== currentUser?.id);
+  })();
 
   // Yuklanish holatini hech qachon cheksiz qolib ketmasligini ta'minlash (Watchdog timer)
   useEffect(() => {
@@ -982,6 +1039,7 @@ export default function ChatPage() {
       if (callData.sdp) {
         callTargetUserIdRef.current = callData.callerId;
         callStartTimeRef.current = Date.now();
+        setCallStartTime(callStartTimeRef.current);
         processedSignalIdsRef.current.clear();
 
         setCallState({
@@ -1074,6 +1132,50 @@ export default function ChatPage() {
     }
   }, [convexSignals, cleanupMediaStreams]);
 
+  // 14. WebRTC: Qo'ng'iroqni rad etish
+  const handleRejectCall = useCallback(
+    async (reason = "Qo‘ng‘iroq rad etildi") => {
+      if (callState.callId) {
+        await sendCallSignal({
+          action: "call_reject",
+          callId: callState.callId,
+          targetUserId: callTargetUserIdRef.current,
+          reason,
+        });
+      }
+      setCallState({
+        status: "idle",
+        callId: null,
+        callType: "video",
+        otherUser: null,
+        incomingOfferSdp: null,
+        error: null,
+      });
+      cleanupMediaStreams();
+    },
+    [callState.callId, sendCallSignal, cleanupMediaStreams]
+  );
+
+  // 15. WebRTC: Qo'ng'iroqni tugatish
+  const handleEndCall = useCallback(async () => {
+    if (callState.callId) {
+      await sendCallSignal({
+        action: "call_end",
+        callId: callState.callId,
+        targetUserId: callTargetUserIdRef.current,
+      });
+    }
+    setCallState({
+      status: "idle",
+      callId: null,
+      callType: "video",
+      otherUser: null,
+      incomingOfferSdp: null,
+      error: null,
+    });
+    cleanupMediaStreams();
+  }, [callState.callId, sendCallSignal, cleanupMediaStreams]);
+
   // 40 soniyalik chiquvchi qo'ng'iroq timeout
   useEffect(() => {
     if (callState.status === "calling") {
@@ -1082,7 +1184,7 @@ export default function ChatPage() {
       }, 40000);
       return () => clearTimeout(timer);
     }
-  }, [callState.status]);
+  }, [callState.status, handleRejectCall]);
 
   // 6. Xabarni tahrirlash (Edit Message)
   const handleEditMessage = async (messageId, newText) => {
@@ -1380,18 +1482,26 @@ export default function ChatPage() {
       forEveryone: false,
       onConfirm: async () => {
         try {
-          const res = await fetch("/api/chat/conversations", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${sessionToken}`,
-            },
-            body: JSON.stringify({
-              action: "clear_history",
-              chatKey: contactUser.id,
-            }),
-          });
-          if (res.ok && activeChat !== "public" && activeChat.id === contactUser.id) {
+          if (isConvexReady && convexClearHistory && currentUser?.id) {
+            await convexClearHistory({
+              userId: currentUser.id,
+              chatKey: contactUser.id || contactUser.userId,
+            });
+          }
+          if (sessionToken) {
+            await fetch("/api/chat/conversations", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${sessionToken}`,
+              },
+              body: JSON.stringify({
+                action: "clear_history",
+                chatKey: contactUser.id || contactUser.userId,
+              }),
+            }).catch(() => {});
+          }
+          if (activeChat !== "public" && (activeChat.id === contactUser.id || activeChat.userId === contactUser.id)) {
             setMessages([]);
           }
         } catch (err) {
@@ -1415,23 +1525,31 @@ export default function ChatPage() {
       forEveryone: false,
       onConfirm: async () => {
         try {
-          const res = await fetch("/api/chat/conversations", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${sessionToken}`,
-            },
-            body: JSON.stringify({
-              action: "delete_chat",
-              chatKey: contactUser.id,
+          const targetKey = contactUser.id || contactUser.userId;
+          if (isConvexReady && convexDeleteChat && currentUser?.id) {
+            await convexDeleteChat({
+              userId: currentUser.id,
+              chatKey: targetKey,
               forEveryone: confirmModal.forEveryone,
-            }),
-          });
-          if (res.ok) {
-            setUsers((prev) => prev.filter((u) => u.id !== contactUser.id));
-            if (activeChat !== "public" && activeChat.id === contactUser.id) {
-              setActiveChat("public");
-            }
+            });
+          }
+          if (sessionToken) {
+            await fetch("/api/chat/conversations", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${sessionToken}`,
+              },
+              body: JSON.stringify({
+                action: "delete_chat",
+                chatKey: targetKey,
+                forEveryone: confirmModal.forEveryone,
+              }),
+            }).catch(() => {});
+          }
+          setUsers((prev) => prev.filter((u) => u.id !== targetKey && u.userId !== targetKey));
+          if (activeChat !== "public" && (activeChat.id === targetKey || activeChat.userId === targetKey)) {
+            setActiveChat("public");
           }
         } catch (err) {
           console.error("Delete chat error:", err);
@@ -1455,6 +1573,7 @@ export default function ChatPage() {
 
     callTargetUserIdRef.current = targetUserId;
     callStartTimeRef.current = Date.now();
+    setCallStartTime(callStartTimeRef.current);
     processedSignalIdsRef.current.clear();
 
     try {
@@ -1630,47 +1749,6 @@ export default function ChatPage() {
     }
   };
 
-  // 14. WebRTC: Qo'ng'iroqni rad etish
-  const handleRejectCall = async (reason = "Qo‘ng‘iroq rad etildi") => {
-    if (callState.callId) {
-      await sendCallSignal({
-        action: "call_reject",
-        callId: callState.callId,
-        targetUserId: callTargetUserIdRef.current,
-        reason,
-      });
-    }
-    setCallState({
-      status: "idle",
-      callId: null,
-      callType: "video",
-      otherUser: null,
-      incomingOfferSdp: null,
-      error: null,
-    });
-    cleanupMediaStreams();
-  };
-
-  // 15. WebRTC: Qo'ng'iroqni tugatish
-  const handleEndCall = async () => {
-    if (callState.callId) {
-      await sendCallSignal({
-        action: "call_end",
-        callId: callState.callId,
-        targetUserId: callTargetUserIdRef.current,
-      });
-    }
-    setCallState({
-      status: "idle",
-      callId: null,
-      callType: "video",
-      otherUser: null,
-      incomingOfferSdp: null,
-      error: null,
-    });
-    cleanupMediaStreams();
-  };
-
   const handleToggleMute = () => {
     if (localStream) {
       const audioTrack = localStream.getAudioTracks()[0];
@@ -1830,13 +1908,18 @@ export default function ChatPage() {
 
   // 17. Umumiy xabar jo'natish
   const dispatchMessage = async ({ textBody, type = "text", storageId = null, mediaUrl = null }) => {
+    if (!currentUser?.id) {
+      setIsAuthModalOpen(true);
+      throw new Error("Xabar yuborish uchun tizimga kiring");
+    }
+
     const isPublic = !isGroupChat && activeChat === "public";
     const targetRecipientId = isGroupChat ? undefined : (isPublic ? "public" : (activeChat?.userId || activeChat?.id || "public"));
-    const authorName = currentUser?.displayName || author.trim() || "Anonim";
+    const authorName = currentUser?.displayName || currentUser?.username || "Foydalanuvchi";
 
     const { clientTempId, optimisticMsg } = createTempMessage({
       author: authorName,
-      senderId: currentUser?.id || null,
+      senderId: currentUser.id,
       recipientId: targetRecipientId || "public",
       textBody,
       type,
@@ -2249,9 +2332,10 @@ export default function ChatPage() {
         mobileView={mobileView}
       />
 
-      {/* Chap Sidebar (Suhbatlar va Foydalanuvchilar) */}
+      {/* Chap Sidebar (Suhbatlar va Kontaktlar) */}
       <ChatSidebar
-        users={displaySidebarUsers}
+        users={displaySidebarConversations}
+        conversations={displaySidebarConversations}
         groupSettings={groupSettings}
         activeChat={activeChat}
         onSelectChat={handleSelectChat}
@@ -2268,6 +2352,7 @@ export default function ChatPage() {
         groups={convexGroups || []}
         onOpenCreateGroup={() => setIsGroupsModalOpen(true)}
         mobileView={mobileView}
+        onOpenContacts={() => setIsContactsModalOpen(true)}
       />
 
       {/* Asosiy Chat Oynasi */}
@@ -3095,14 +3180,21 @@ export default function ChatPage() {
             });
           }
         }}
-        onLogout={() => {
+        onLogout={async () => {
+          if (currentUser?.id && isConvexConfigured) {
+            try {
+              await convexSetOnlineStatus({ userId: currentUser.id, isOnline: false });
+            } catch (e) {
+              console.debug("Set offline status error:", e);
+            }
+          }
           localStorage.removeItem("chat_token");
           localStorage.removeItem("chat_user");
           localStorage.removeItem("chat_username");
           localStorage.removeItem("chat_display_name");
           setCurrentUser(null);
           setSessionToken(null);
-          setAuthor("Foydalanuvchi");
+          setAuthor("");
           setMessages([]);
           setIsSettingsModalOpen(false);
           setIsAuthModalOpen(true);

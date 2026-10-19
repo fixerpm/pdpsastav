@@ -99,7 +99,7 @@ export default function MeetingsModal({
 }) {
   const [meetingMode, setMeetingMode] = useState("lobby"); // "lobby" | "in-meeting"
   const [meetingTitle, setMeetingTitle] = useState("");
-  const [joinMeetingId, setJoinMeetingId] = useState("");
+  const [joinMeetingId, setJoinMeetingId] = useState(initialMeetingId || "");
   const [activeMeetingId, setActiveMeetingId] = useState(null);
   const [isAudioOnly, setIsAudioOnly] = useState(false);
   const [isStartingMeeting, setIsStartingMeeting] = useState(false);
@@ -153,12 +153,6 @@ export default function MeetingsModal({
       ? { meetingId: activeMeetingId, targetId: myUserId }
       : "skip"
   );
-
-  useEffect(() => {
-    if (initialMeetingId && !joinMeetingId) {
-      setJoinMeetingId(initialMeetingId);
-    }
-  }, [initialMeetingId, joinMeetingId]);
 
   useEffect(() => {
     localStreamRef.current = localStream;

@@ -10,7 +10,7 @@ import { BRAND_CONFIG } from "@/config/branding";
 function MeetPageContent() {
   const [activeMeetingRoomId, setActiveMeetingRoomId] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
-  const [author, setAuthor] = useState("Foydalanuvchi");
+  const [author, setAuthor] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;

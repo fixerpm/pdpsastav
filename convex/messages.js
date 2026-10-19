@@ -75,12 +75,25 @@ export const list = query({
     }
 
     // viewerId uchun o'chirilgan xabarlarni filtrlash
-    const filtered = messages.filter((m) => {
+    let filtered = messages.filter((m) => {
       if (args.viewerId && Array.isArray(m.deletedFor) && m.deletedFor.includes(args.viewerId)) {
         return false;
       }
       return true;
     });
+
+    // viewerId uchun tarix tozalangan vaqtni (clearedAt) tekshirish
+    if (args.viewerId && args.recipientId && args.recipientId !== "public") {
+      const conv = await ctx.db
+        .query("conversations")
+        .withIndex("by_user_chat", (q) =>
+          q.eq("userId", args.viewerId).eq("chatKey", args.recipientId)
+        )
+        .first();
+      if (conv?.clearedAt) {
+        filtered = filtered.filter((m) => m._creationTime > conv.clearedAt);
+      }
+    }
 
     // Storage ID larga tegishli doimiy URL manzillarni hal qilish
     const resolved = await Promise.all(
@@ -159,8 +172,34 @@ export const send = mutation({
         .query("users")
         .withIndex("by_userId", (q) => q.eq("userId", args.recipientId))
         .first();
-      if (recipient && Array.isArray(recipient.blockedUserIds) && recipient.blockedUserIds.includes(args.senderId)) {
+
+      if (!recipient) {
+        throw new Error("Qabul qiluvchi foydalanuvchi topilmadi");
+      }
+
+      if (recipient.blockedUserIds && recipient.blockedUserIds.includes(args.senderId)) {
         throw new Error("Ushbu foydalanuvchi sizni bloklagan");
+      }
+
+      // Agar suhbat yashirilgan bo'lsa, yangi xabar kelishi bilan yashirishni bekor qilish
+      const conv1 = await ctx.db
+        .query("conversations")
+        .withIndex("by_user_chat", (q) =>
+          q.eq("userId", args.senderId).eq("chatKey", args.recipientId)
+        )
+        .first();
+      if (conv1?.isHidden) {
+        await ctx.db.patch(conv1._id, { isHidden: false });
+      }
+
+      const conv2 = await ctx.db
+        .query("conversations")
+        .withIndex("by_user_chat", (q) =>
+          q.eq("userId", args.recipientId).eq("chatKey", args.senderId)
+        )
+        .first();
+      if (conv2?.isHidden) {
+        await ctx.db.patch(conv2._id, { isHidden: false });
       }
     }
 

@@ -167,8 +167,10 @@ export const chatStore = {
     };
   },
 
-  // Foydalanuvchilarni olish (so'nggi xabar vaqtiga qarab saralangan va nickname bilan)
+  // Foydalanuvchilarni olish (FAQAT haqiqiy yozishmalar mavjud bo'lgan suhbatlar)
   getUsers(currentUserId = null) {
+    if (!currentUserId) return [];
+
     const onlineUserIds = new Set();
     for (const [, sub] of subscribers.entries()) {
       if (sub.userId && sub.userId !== "public-user") {
@@ -176,13 +178,31 @@ export const chatStore = {
       }
     }
 
-    const userNicknames = currentUserId ? state.nicknames[currentUserId] || {} : {};
-    const userChatSettings = currentUserId ? state.chatSettings[currentUserId] || {} : {};
+    const userNicknames = state.nicknames[currentUserId] || {};
+    const userChatSettings = state.chatSettings[currentUserId] || {};
 
-    const list = state.users.map((u) => {
-      // Oxirgi xabarni topish (currentUserId bilan u.id orasida)
-      let lastMsg = null;
-      if (currentUserId && currentUserId !== u.id) {
+    // Faqat joriy foydalanuvchi bilan yozishma qilgan boshqa foydalanuvchilarni topish
+    const conversedUserIds = new Set();
+    for (const m of state.messages) {
+      if (m.recipientId && m.recipientId !== "public") {
+        if (m.senderId === currentUserId && m.recipientId && m.recipientId !== currentUserId) {
+          conversedUserIds.add(m.recipientId);
+        } else if (m.recipientId === currentUserId && m.senderId && m.senderId !== currentUserId) {
+          conversedUserIds.add(m.senderId);
+        }
+      }
+    }
+
+    // Agar hech qanday suhbat bo'lmasa, bo'sh ro'yxat qaytariladi
+    if (conversedUserIds.size === 0) {
+      return [];
+    }
+
+    const list = state.users
+      .filter((u) => u.id !== currentUserId && conversedUserIds.has(u.id))
+      .map((u) => {
+        // Oxirgi xabarni topish (currentUserId bilan u.id orasida)
+        let lastMsg = null;
         const conversationMsgs = state.messages.filter(
           (m) =>
             !m.deletedFor?.includes(currentUserId) &&
@@ -193,30 +213,30 @@ export const chatStore = {
         if (conversationMsgs.length > 0) {
           lastMsg = conversationMsgs[conversationMsgs.length - 1];
         }
-      }
 
-      const isArchived = !!userChatSettings[u.id]?.isArchived;
-      const isHidden = !!userChatSettings[u.id]?.isHidden;
+        const isArchived = !!userChatSettings[u.id]?.isArchived;
+        const isHidden = !!userChatSettings[u.id]?.isHidden;
 
-      return {
-        ...u,
-        originalDisplayName: u.displayName,
-        displayName: userNicknames[u.id] || u.displayName,
-        customNickname: userNicknames[u.id] || null,
-        isOnline: onlineUserIds.has(u.id),
-        isSelf: currentUserId ? u.id === currentUserId : false,
-        isArchived,
-        isHidden,
-        lastMessage: lastMsg
-          ? {
-              body: lastMsg.body || "",
-              type: lastMsg.type || "text",
-              createdAt: lastMsg.createdAt,
-              isMe: lastMsg.senderId === currentUserId,
-            }
-          : null,
-      };
-    });
+        return {
+          ...u,
+          originalDisplayName: u.displayName,
+          displayName: userNicknames[u.id] || u.displayName,
+          customNickname: userNicknames[u.id] || null,
+          isOnline: onlineUserIds.has(u.id),
+          isSelf: false,
+          isArchived,
+          isHidden,
+          lastMessage: lastMsg
+            ? {
+                body: lastMsg.body || "",
+                type: lastMsg.type || "text",
+                createdAt: lastMsg.createdAt,
+                isMe: lastMsg.senderId === currentUserId,
+              }
+            : null,
+        };
+      })
+      .filter((u) => !u.isHidden || u.lastMessage !== null);
 
     // So'nggi xabar vaqtiga qarab tartiblash (oxirgi yozishganlar tepada)
     return list.sort((a, b) => {

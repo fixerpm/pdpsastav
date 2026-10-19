@@ -6,6 +6,7 @@ import { BRAND_CONFIG } from "@/config/branding";
 
 export default function ChatSidebar({
   users = [],
+  conversations = null,
   groupSettings = { title: BRAND_CONFIG.defaultGroupTitle },
   activeChat = "public",
   onSelectChat,
@@ -22,14 +23,17 @@ export default function ChatSidebar({
   groups = [],
   onOpenCreateGroup,
   mobileView = "list",
+  onOpenContacts,
 }) {
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("all"); // "all" | "archived"
   const [activeMenuUserId, setActiveMenuUserId] = useState(null);
 
-  // Foydalanuvchilarni filtrlash
-  const filteredUsers = users.filter((u) => {
-    if (u.id === currentUserId) return false;
+  const chatList = conversations !== null ? conversations : users;
+
+  // Suhbatlarni filtrlash
+  const filteredUsers = chatList.filter((u) => {
+    if (u.id === currentUserId || u.userId === currentUserId) return false;
 
     // Arxiv filtri
     if (activeTab === "archived" && !u.isArchived) return false;
@@ -46,8 +50,8 @@ export default function ChatSidebar({
     );
   });
 
-  const archivedCount = users.filter((u) => u.id !== currentUserId && u.isArchived).length;
-  const onlineCount = users.filter((u) => u.isOnline && u.id !== currentUserId).length;
+  const archivedCount = chatList.filter((u) => u.id !== currentUserId && u.isArchived).length;
+  const onlineCount = chatList.filter((u) => u.isOnline && u.id !== currentUserId).length;
 
   return (
     <>
@@ -95,7 +99,7 @@ export default function ChatSidebar({
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Foydalanuvchilarni qidirish..."
+              placeholder="Suhbatlarni qidirish..."
               className="w-full bg-zinc-900/90 border border-zinc-800 focus:border-cyan-400/80 focus:ring-1 focus:ring-cyan-500/30 rounded-xl pl-9 pr-7 py-2 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none transition shadow-inner"
             />
             <svg
@@ -272,14 +276,37 @@ export default function ChatSidebar({
           )}
 
           <div className="pt-3 pb-1 px-2 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
-            {activeTab === "archived" ? "Arxivlangan suhbatlar" : "Foydalanuvchilar"}
+            {activeTab === "archived" ? "Arxivlangan suhbatlar" : "Suhbatlar"}
           </div>
 
           {filteredUsers.length === 0 ? (
-            <div className="text-center py-6 px-4 text-xs text-zinc-500">
-              {activeTab === "archived"
-                ? "Arxivlangan suhbatlar yo‘q"
-                : "Hozircha foydalanuvchilar topilmadi"}
+            <div className="text-center py-10 px-4 text-xs text-zinc-500">
+              <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-zinc-900/80 border border-zinc-800/80 flex items-center justify-center text-xl text-zinc-400">
+                💬
+              </div>
+              <p className="font-semibold text-zinc-300 mb-1">
+                {activeTab === "archived"
+                  ? "Arxivlangan suhbatlar yo‘q"
+                  : "Hozircha suhbatlar yo‘q"}
+              </p>
+              <p className="text-[11px] text-zinc-500 mb-3 max-w-[200px] mx-auto">
+                {activeTab === "archived"
+                  ? "Arxivlangan chatlar shu yerda ko‘rinadi"
+                  : "Kontaktlaringizdan tanlang yoki yangi odam qidirib xabar yozing"}
+              </p>
+              {activeTab !== "archived" && onOpenContacts && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenContacts();
+                    onClose?.();
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  <span>👥</span>
+                  <span>Kontakt topish</span>
+                </button>
+              )}
             </div>
           ) : (
             filteredUsers.map((user) => {
@@ -343,6 +370,8 @@ export default function ChatSidebar({
                               ? "Stiker"
                               : user.lastMessage.body}
                           </span>
+                        ) : user.isDraft ? (
+                          <span className="text-cyan-400/90 font-medium italic">Yangi suhbat boshlang</span>
                         ) : user.isOnline ? (
                           <span className="text-emerald-400/90 font-medium">Onlayn</span>
                         ) : (
