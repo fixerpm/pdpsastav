@@ -233,8 +233,10 @@ export default function ChatPage() {
       const meetCode = params.get("meet");
       if (meetCode) {
         const cleanMeetingId = meetCode.trim().toLowerCase();
-        setActiveMeetingRoomId(cleanMeetingId);
-        setIsMeetingsModalOpen(true);
+        setTimeout(() => {
+          setActiveMeetingRoomId(cleanMeetingId);
+          setIsMeetingsModalOpen(true);
+        }, 0);
       }
     } catch (e) {
       console.error("URL search param parsing error:", e);
@@ -1100,31 +1102,37 @@ export default function ChatPage() {
             );
           }
         } else if (signal.type === "call_reject") {
-          setCallState({
-            status: "idle",
-            callId: null,
-            callType: "video",
-            otherUser: null,
-            incomingOfferSdp: null,
-            error: payload.reason || "Qo‘ng‘iroq rad etildi",
-          });
-          cleanupMediaStreams();
+          setTimeout(() => {
+            setCallState({
+              status: "idle",
+              callId: null,
+              callType: "video",
+              otherUser: null,
+              incomingOfferSdp: null,
+              error: payload.reason || "Qo‘ng‘iroq rad etildi",
+            });
+            cleanupMediaStreams();
+          }, 0);
         } else if (signal.type === "call_end") {
-          setCallState({
-            status: "idle",
-            callId: null,
-            callType: "video",
-            otherUser: null,
-            incomingOfferSdp: null,
-            error: null,
-          });
-          cleanupMediaStreams();
+          setTimeout(() => {
+            setCallState({
+              status: "idle",
+              callId: null,
+              callType: "video",
+              otherUser: null,
+              incomingOfferSdp: null,
+              error: null,
+            });
+            cleanupMediaStreams();
+          }, 0);
         } else if (signal.type === "media_state") {
           console.debug("Remote media state changed:", payload);
-          setRemoteMediaState({
-            isVideoOff: Boolean(payload.isVideoOff),
-            isMuted: Boolean(payload.isMuted),
-          });
+          setTimeout(() => {
+            setRemoteMediaState({
+              isVideoOff: Boolean(payload.isVideoOff),
+              isMuted: Boolean(payload.isMuted),
+            });
+          }, 0);
         }
       } catch (e) {
         console.debug("Signal parse error:", e);

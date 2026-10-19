@@ -35,7 +35,7 @@ function RemoteParticipantTile({ participant, stream }) {
         console.warn("Video play error for remote participant:", participant.displayName, err);
       });
     }
-  }, [stream, participant.isVideoOff]);
+  }, [stream, participant.isVideoOff, participant.displayName]);
 
   const hasVideo = stream && stream.getVideoTracks().some((t) => t.enabled && t.readyState === "live") && !participant.isVideoOff;
 

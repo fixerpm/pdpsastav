@@ -9,24 +9,36 @@ import { BRAND_CONFIG } from "@/config/branding";
 
 function MeetPageContent() {
   const [activeMeetingRoomId, setActiveMeetingRoomId] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [author, setAuthor] = useState("");
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  const [currentUser, setCurrentUser] = useState(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const savedUser = localStorage.getItem("chat_user");
+      return savedUser ? JSON.parse(savedUser) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [author, setAuthor] = useState(() => {
+    if (typeof window === "undefined") return "";
     try {
       const savedUser = localStorage.getItem("chat_user");
       if (savedUser) {
         const parsed = JSON.parse(savedUser);
-        setCurrentUser(parsed);
-        if (parsed.displayName || parsed.username) {
-          setAuthor(parsed.displayName || parsed.username);
-        }
+        return parsed.displayName || parsed.username || "";
       }
+    } catch {}
+    return "";
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
       const params = new URLSearchParams(window.location.search);
       const meetCode = params.get("meet") || params.get("id");
       if (meetCode) {
-        setActiveMeetingRoomId(meetCode.trim().toLowerCase());
+        setTimeout(() => {
+          setActiveMeetingRoomId(meetCode.trim().toLowerCase());
+        }, 0);
       }
     } catch (e) {
       console.warn("Meet page init error:", e);

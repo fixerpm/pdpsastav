@@ -9,6 +9,20 @@ export default function ErrorBoundary({ error, reset }) {
     console.error("PDP SASTAV ErrorBoundary caught error:", error);
   }, [error]);
 
+  const handleResetSession = () => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("chat_user");
+        localStorage.removeItem("chat_token");
+        localStorage.removeItem("chat_username");
+        localStorage.removeItem("chat_display_name");
+      } catch (e) {}
+      window.location.href = "/";
+    } else {
+      reset();
+    }
+  };
+
   return (
     <div className="flex h-screen w-full items-center justify-center bg-zinc-950 text-zinc-100 p-4">
       <div className="max-w-md w-full bg-zinc-900/90 border border-zinc-800 rounded-3xl p-6 sm:p-8 text-center space-y-5 shadow-2xl backdrop-blur-xl">
@@ -29,9 +43,19 @@ export default function ErrorBoundary({ error, reset }) {
           <p className="text-xs text-zinc-400 leading-relaxed">
             Internet aloqasi yoki tarmoq yangilanishi sababli xatolik yuz berdi. Iltimos qayta urinib ko‘ring.
           </p>
+          {error?.message && (
+            <details className="text-left mt-2 p-2 bg-zinc-950/60 rounded-xl border border-zinc-800 text-[11px] text-zinc-400">
+              <summary className="cursor-pointer font-medium text-cyan-400/90 select-none">
+                Texnik tafsilotlar
+              </summary>
+              <div className="mt-1 font-mono text-[10px] text-zinc-300 break-words max-h-32 overflow-y-auto">
+                {String(error.message)}
+              </div>
+            </details>
+          )}
         </div>
 
-        <div className="flex gap-3 pt-2">
+        <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
           <button
             onClick={() => {
               if (typeof window !== "undefined") {
@@ -45,14 +69,11 @@ export default function ErrorBoundary({ error, reset }) {
             Qayta yuklash
           </button>
           <button
-            onClick={() => {
-              if (typeof window !== "undefined") {
-                window.location.href = "/";
-              }
-            }}
+            onClick={handleResetSession}
             className="py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold rounded-xl text-xs transition cursor-pointer"
+            title="Xotirani tozalash va toza boshlash"
           >
-            Bosh sahifa
+            Sessiyani tozalash
           </button>
         </div>
       </div>

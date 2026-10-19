@@ -3,7 +3,8 @@ const { execSync } = require("child_process");
 if (process.env.CONVEX_DEPLOY_KEY) {
   console.log("⚡ CONVEX_DEPLOY_KEY aniqlandi. Convex funksiyalari avtomatik deploy qilinmoqda...");
   try {
-    execSync("npx convex deploy", { stdio: "inherit" });
+    const cmd = process.platform === "win32" ? "npx.cmd convex deploy -y" : "npx convex deploy -y";
+    execSync(cmd, { stdio: "inherit" });
     console.log("✅ Convex muvaffaqiyatli deploy qilindi.");
   } catch (err) {
     console.error("⚠️ Convex deploy xatoligi:", err.message);
